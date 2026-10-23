@@ -6,6 +6,7 @@ import { ExternalLink, ListEnd, ListStart, Pause, Play } from 'lucide-react'
 import { providerById } from '../lib/searchService'
 import { fetchRelatedTracks } from '../lib/related'
 import { TrackRow } from '../components/TrackRow'
+import { ArtistLinks } from '../components/ArtistLinks'
 import { EmptyState, ErrorState, Spinner, Chip, toast } from '../components/ui'
 import { usePlayer, selectCurrentTrack } from '../stores/player'
 import { useLibrary } from '../stores/library'
@@ -121,7 +122,9 @@ function TrackDetailBody({ track }: { track: Track }) {
             {track.isLive ? 'Live stream' : 'Track'} · {sourceChipFor(track.source, track.collection)}
           </p>
           <h1 className="mt-1 break-words text-2xl font-extrabold tracking-tight md:text-3xl">{track.title}</h1>
-          <p className="mt-1 text-sm text-zinc-400">by {track.artist}</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            by <ArtistLinks track={track} />
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {track.isLive ? <Chip tone="warn">Live — no seeking</Chip> : null}
             {!track.isLive && track.durationSec ? <Chip>{formatDuration(track.durationSec)}</Chip> : null}

@@ -17,6 +17,7 @@
 import { CapacitorHttp } from '@capacitor/core'
 import { isNativeApp } from './nativeMedia'
 import type { Track } from '../types'
+import { appleSongToTrack } from './appleTracks'
 
 const APPLE_FEEDS = 'https://rss.marketingtools.apple.com/api/v2'
 const PROXY_PREFIX = '/api/charts'
@@ -94,38 +95,12 @@ export function setChartCountry(code: ChartCountry): void {
   }
 }
 
-/** Removes "(feat. …)" / "[feat. …]" — YouTube titles rarely match them exactly. */
-function stripFeat(title: string): string {
-  return title.replace(/\s*[([](feat\.?|ft\.?|featuring)\s[^)\]]*[)\]]/gi, '').trim()
-}
-
 export function appleResultToEntry(r: AppleFeedResult, rank: number): ChartEntry {
-  const title = r.name.trim()
-  const artist = r.artistName.trim()
   const genres = (r.genres ?? []).map((g) => g.name).filter((g) => g && g !== 'Music')
-  const track: Track = {
-    id: `youtube:chart-${r.id}`,
-    source: 'youtube',
-    identifier: `chart-${r.id}`,
-    fileName: '',
-    title,
-    artist,
-    album: '',
-    // Feed art is 100px; Apple's image service serves any size from the same path.
-    artwork: r.artworkUrl100 ? r.artworkUrl100.replace(/\/\d+x\d+bb\./, '/600x600bb.') : null,
-    durationSec: null,
-    formats: [],
-    embed: null,
-    lookup: { query: `${stripFeat(title)} ${artist}` },
-    licenseUrl: 'https://www.youtube.com/t/terms',
-    licenseName: 'YouTube Terms of Service (official embed)',
-    language: null,
-    genres,
-    estimatedMoods: [],
-    year: r.releaseDate ? Number(r.releaseDate.slice(0, 4)) || null : null,
-    itemPage: r.url ?? 'https://music.apple.com',
-    collection: null
-  }
+  const track = appleSongToTrack(
+    { id: r.id, title: r.name, artist: r.artistName, artwork: r.artworkUrl100, releaseDate: r.releaseDate, genres, url: r.url },
+    'chart'
+  )
   return { rank, track, releaseDate: r.releaseDate ?? null, genres }
 }
 

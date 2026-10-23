@@ -25,6 +25,7 @@ export function SettingsPage() {
   const quality = useSettings((s) => s.quality)
   const historyEnabled = useSettings((s) => s.historyEnabled)
   const autoplayNext = useSettings((s) => s.autoplayNext)
+  const artistAutoplay = useSettings((s) => s.artistAutoplay)
   const preloadEnabled = useSettings((s) => s.preloadEnabled)
   const cacheMode = useSettings((s) => s.cacheMode)
   const sources = useSettings((s) => s.sources)
@@ -84,6 +85,12 @@ export function SettingsPage() {
         </SettingRow>
         <SettingRow label="Autoplay next track" hint="Continue through the queue when a track ends. Failed tracks are skipped automatically.">
           <Toggle checked={autoplayNext} onChange={(v) => useSettings.getState().setAutoplayNext(v)} label="Autoplay next" />
+        </SettingRow>
+        <SettingRow
+          label="Keep playing the artist's hits"
+          hint="When the queue runs out, continue with the top hits of the artist you were listening to (ranked by Apple's popularity data)."
+        >
+          <Toggle checked={artistAutoplay} onChange={(v) => useSettings.getState().setArtistAutoplay(v)} label="Keep playing the artist's hits" />
         </SettingRow>
       </Section>
 

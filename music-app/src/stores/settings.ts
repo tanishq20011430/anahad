@@ -14,6 +14,8 @@ export interface SettingsState {
   quality: QualityPreference
   historyEnabled: boolean
   autoplayNext: boolean
+  /** When the queue runs out, continue with the last artist's top hits. */
+  artistAutoplay: boolean
   /** Next-track preloading (metadata + small audio prebuffer). */
   preloadEnabled: boolean
   /** Bounded in-memory audio cache mode — never persisted to disk. */
@@ -24,6 +26,7 @@ export interface SettingsState {
   setQuality: (q: QualityPreference) => void
   setHistoryEnabled: (v: boolean) => void
   setAutoplayNext: (v: boolean) => void
+  setArtistAutoplay: (v: boolean) => void
   setPreloadEnabled: (v: boolean) => void
   setCacheMode: (m: CacheMode) => void
   setSourceEnabled: (id: SearchSourceId, v: boolean) => void
@@ -43,6 +46,7 @@ export const useSettings = create<SettingsState>()(
       quality: 'auto',
       historyEnabled: true,
       autoplayNext: true,
+      artistAutoplay: true,
       preloadEnabled: true,
       cacheMode: 'standard',
       sources: { youtube: true, audius: true, radio: true, openverse: true, mixcloud: true },
@@ -53,6 +57,7 @@ export const useSettings = create<SettingsState>()(
       setQuality: (q) => set({ quality: q }),
       setHistoryEnabled: (v) => set({ historyEnabled: v }),
       setAutoplayNext: (v) => set({ autoplayNext: v }),
+      setArtistAutoplay: (v) => set({ artistAutoplay: v }),
       setPreloadEnabled: (v) => {
         set({ preloadEnabled: v })
         if (!v) {

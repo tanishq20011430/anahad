@@ -71,6 +71,8 @@ describe('player store — queue behavior', () => {
 
   it('next() advances and stop at end with repeat off', async () => {
     stubController()
+    const { useSettings } = await import('../src/stores/settings')
+    useSettings.setState({ artistAutoplay: false })
     await usePlayer.getState().playTracks([makeTrack(0), makeTrack(1)], 0, null)
     await usePlayer.getState().next()
     expect(usePlayer.getState().currentIndex).toBe(1)

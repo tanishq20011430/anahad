@@ -19,6 +19,7 @@ import { ytTransport } from '../lib/ytPlayer'
 import { useSettings } from './settings'
 import { useLibrary } from './library'
 import { clamp } from '../lib/format'
+import { baseTitle, continuationArtist, fetchArtistHits } from '../lib/artists'
 
 export interface PlaybackRequest {
   /** Original network URL (identity for cache/preload policies). */
@@ -114,6 +115,40 @@ const canPlayType = (type: string): boolean => {
 }
 
 export const usePlayer = create<PlayerState>((set, get) => {
+  /**
+   * Queue ran out: append the current artist's top hits (skipping songs
+   * already queued) and move to the first of them. Returns false when the
+   * setting is off, the track has no artist, or nothing new was found.
+   */
+  async function continueWithArtistHits(): Promise<boolean> {
+    if (!useSettings.getState().artistAutoplay) return false
+    const before = get()
+    const seed = before.queue[before.currentIndex]
+    const artist = seed ? continuationArtist(seed) : null
+    if (!artist) return false
+    let fresh: Track[]
+    try {
+      const hits = await fetchArtistHits(artist)
+      const queued = new Set(before.queue.map((t) => baseTitle(t.title)))
+      fresh = hits.tracks.filter((t) => !queued.has(baseTitle(t.title))).slice(0, 25)
+    } catch {
+      return false
+    }
+    // Bail if the user changed the queue while hits were loading.
+    if (fresh.length === 0 || get().queue !== before.queue) return false
+    const start = before.queue.length
+    const added = fresh.map((_, i) => start + i)
+    set({
+      queue: [...before.queue, ...fresh],
+      currentIndex: start,
+      currentTime: 0,
+      contextLabel: `${artist} · top hits`,
+      shuffledOrder: before.shuffledOrder ? [...before.shuffledOrder, ...added] : null,
+      shufflePointer: before.shuffledOrder ? before.shuffledOrder.length : 0
+    })
+    return true
+  }
+
   /** Core loader: resolves formats, applies quality, loads into audio element. */
   async function loadCurrent() {
     const state = get()
@@ -365,7 +400,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
           set({ shufflePointer: nextPointer, currentIndex: s.shuffledOrder[nextPointer], currentTime: 0 })
         } else if (s.repeat === 'all') {
           set({ shufflePointer: 0, currentIndex: s.shuffledOrder[0], currentTime: 0 })
-        } else {
+        } else if (!(await continueWithArtistHits())) {
           set({ isPlaying: false, currentTime: 0 })
           return
         }
@@ -375,7 +410,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
           set({ currentIndex: nextIndex, currentTime: 0 })
         } else if (s.repeat === 'all') {
           set({ currentIndex: 0, currentTime: 0 })
-        } else {
+        } else if (!(await continueWithArtistHits())) {
           set({ isPlaying: false, currentTime: 0 })
           return
         }

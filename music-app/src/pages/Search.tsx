@@ -1,9 +1,12 @@
 /** Search: debounced unified multi-source search with filters + suggestions. */
 
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Filter, Link2, Play, Search as SearchIcon, X } from 'lucide-react'
+import { Filter, Link2, Mic2, Play, Search as SearchIcon, X } from 'lucide-react'
+import { fetchArtistHits, searchArtists } from '../lib/artists'
+import { artistPath } from '../components/ArtistLinks'
+import { usePlayer } from '../stores/player'
 import { unifiedTrackSearch, buildSuggestions, PROVIDERS } from '../lib/searchService'
 import { GENRES, LANGUAGES } from '../config/catalog'
 import { TrackRow } from '../components/TrackRow'
@@ -129,6 +132,8 @@ export function SearchPage() {
         ) : null}
       </div>
 
+      {debounced.trim() && !genre && !language ? <ArtistResults query={debounced} /> : null}
+
       {debounced.trim() ? (
         <TrackResults
           query={debounced}
@@ -153,6 +158,61 @@ export function SearchPage() {
 }
 
 type TrackQuery = ReturnType<typeof useQuery<UnifiedTrackSearchResponse>>
+
+/** Artists matching the query: open their page or play their top hits in one tap. */
+function ArtistResults({ query }: { query: string }) {
+  const q = useQuery({
+    queryKey: ['artist-search', query.toLowerCase()],
+    queryFn: ({ signal }) => searchArtists(query, 4, signal),
+    staleTime: 10 * 60 * 1000,
+    retry: 0
+  })
+  const [loading, setLoading] = useState<string | null>(null)
+  const artists = q.data ?? []
+  if (artists.length === 0) return null
+
+  async function playHits(name: string) {
+    setLoading(name)
+    try {
+      const hits = await fetchArtistHits(name)
+      if (hits.tracks.length === 0) toast(`No hits found for ${name}`, 'error')
+      else await usePlayer.getState().playTracks(hits.tracks, 0, `${hits.name} · top hits`)
+    } catch {
+      toast("Couldn't load this artist's hits right now", 'error')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  return (
+    <section aria-label="Artists">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Artists</p>
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
+        {artists.map((a) => (
+          <div key={a.id} className="flex flex-shrink-0 items-center gap-2 rounded-full bg-surface-raised py-1.5 pl-1.5 pr-2 ring-1 ring-white/10">
+            <Link to={artistPath(a.name)} className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15 text-accent" aria-hidden>
+                <Mic2 className="h-4 w-4" />
+              </span>
+              <span className="max-w-[10rem]">
+                <span className="block truncate text-sm font-semibold text-zinc-100">{a.name}</span>
+                {a.genre ? <span className="block truncate text-[10px] text-zinc-500">{a.genre}</span> : null}
+              </span>
+            </Link>
+            <button
+              onClick={() => void playHits(a.name)}
+              disabled={loading !== null}
+              aria-label={`Play top hits by ${a.name}`}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-black transition hover:bg-accent-soft disabled:opacity-60"
+            >
+              {loading === a.name ? <Spinner className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 function TrackResults({
   query,

@@ -15,6 +15,7 @@ import { startPreloadEngine } from './lib/preload'
 const HomePage = lazy(() => import('./pages/Home').then((m) => ({ default: m.HomePage })))
 const SearchPage = lazy(() => import('./pages/Search').then((m) => ({ default: m.SearchPage })))
 const ChartsPage = lazy(() => import('./pages/Charts').then((m) => ({ default: m.ChartsPage })))
+const ArtistPage = lazy(() => import('./pages/Artist').then((m) => ({ default: m.ArtistPage })))
 const GenresPage = lazy(() => import('./pages/Browse').then((m) => ({ default: m.GenresPage })))
 const MoodsPage = lazy(() => import('./pages/Browse').then((m) => ({ default: m.MoodsPage })))
 const ShelfPage = lazy(() => import('./pages/Browse').then((m) => ({ default: m.ShelfPage })))
@@ -78,6 +79,7 @@ export default function App() {
             />
             <Route path="/search" element={<Suspense fallback={<PageFallback />}><SearchPage /></Suspense>} />
             <Route path="/charts" element={<Suspense fallback={<PageFallback />}><ChartsPage /></Suspense>} />
+            <Route path="/artist/:name" element={<Suspense fallback={<PageFallback />}><ArtistPage /></Suspense>} />
             <Route path="/genres" element={<Suspense fallback={<PageFallback />}><GenresPage /></Suspense>} />
             <Route path="/moods" element={<Suspense fallback={<PageFallback />}><MoodsPage /></Suspense>} />
             <Route path="/genres/:id" element={<Suspense fallback={<PageFallback />}><ShelfPage kind="genre" /></Suspense>} />

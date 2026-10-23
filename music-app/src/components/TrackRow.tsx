@@ -11,6 +11,7 @@ import { sourceChipFor } from '../lib/sourceStatus'
 import { isPlayable } from '../lib/resolve'
 import { toast } from './ui'
 import { AddToPlaylistModal } from './AddToPlaylistModal'
+import { ArtistLinks } from './ArtistLinks'
 
 export function TrackRow({
   track,
@@ -104,7 +105,7 @@ export function TrackRow({
           ) : null}
         </div>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-          <span className="truncate">{track.artist}</span>
+          <ArtistLinks track={track} className="truncate" />
           <span aria-hidden>·</span>
           <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-zinc-600">{sourceChipFor(track.source, track.collection)}</span>
         </div>

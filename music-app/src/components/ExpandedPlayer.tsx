@@ -8,6 +8,7 @@ import { sourceChipFor } from '../lib/sourceStatus'
 import { embedSrc } from '../lib/external'
 import { QualityMenu } from './QualityMenu'
 import { Chip } from './ui'
+import { ArtistLinks } from './ArtistLinks'
 import { moodById } from '../config/catalog'
 import { useLibrary } from '../stores/library'
 
@@ -55,7 +56,7 @@ export function ExpandedPlayer({ onClose }: { onClose: () => void }) {
 
         <div className="w-full max-w-md text-center">
           <h2 className="truncate text-xl font-bold text-zinc-50">{track.title}</h2>
-          <span className="text-sm text-zinc-400">{track.artist}</span>
+          <ArtistLinks track={track} className="text-sm text-zinc-400" onNavigate={onClose} />
           <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
             <Chip>{sourceChipFor(track.source, track.collection)}</Chip>
             {license ? <Chip tone="accent">{license}</Chip> : null}
