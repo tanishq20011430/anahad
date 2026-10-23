@@ -6,8 +6,10 @@ import { useQuery } from '@tanstack/react-query'
 import { Smile, Compass } from 'lucide-react'
 import { GENRES, MOODS, genreById, moodById } from '../config/catalog'
 import { fetchAlbumsFor } from '../lib/discover'
+import { unifiedTrackSearch } from '../lib/searchService'
 import { AlbumCard, AlbumCardSkeleton } from '../components/AlbumCard'
-import { EmptyState, ErrorState, Chip } from '../components/ui'
+import { TrackRow } from '../components/TrackRow'
+import { EmptyState, ErrorState, Chip, DegradedSources } from '../components/ui'
 
 export function GenresPage() {
   return (
@@ -82,6 +84,16 @@ export function ShelfPage({ kind }: { kind: 'genre' | 'mood' }) {
     enabled: Boolean(def)
   })
 
+  // Track-first results for shelves whose tag genuinely exists on Openverse.
+  const ovTag = kind === 'genre' ? genreById(id)?.openverseTag : moodById(id)?.openverseTag
+  const clause = kind === 'genre' ? genreById(id)?.clause : moodById(id)?.clause
+  const tracks = useQuery({
+    queryKey: ['shelf-tracks', kind, id],
+    queryFn: ({ signal }) => unifiedTrackSearch({ genre: clause, tag: ovTag, rows: 12, signal }),
+    staleTime: 5 * 60 * 1000,
+    enabled: Boolean(def && ovTag)
+  })
+
   if (!def) {
     return <EmptyState title="Category not found" hint="It may have been renamed. Browse the full list instead." />
   }
@@ -101,6 +113,21 @@ export function ShelfPage({ kind }: { kind: 'genre' | 'mood' }) {
           ) : null}
         </div>
       </header>
+
+      {tracks.data && tracks.data.tracks.length > 0 ? (
+        <section aria-label="Tracks on this shelf" className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-zinc-100">Tracks</h2>
+            <p className="text-[11px] text-zinc-600">via Openverse — Jamendo · Wikimedia · Freesound</p>
+          </div>
+          <DegradedSources degraded={tracks.data.degraded} />
+          <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
+            {tracks.data.tracks.map((t) => (
+              <TrackRow key={t.id} track={t} contextTracks={tracks.data!.tracks} contextLabel={def.label} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {q.isPending ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

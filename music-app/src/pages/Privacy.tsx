@@ -24,12 +24,17 @@ export function PrivacyPage() {
             advertising or telemetry requests. Period.
           </li>
           <li>
-            <strong className="text-zinc-200">Requests to archive.org.</strong> Search and playback fetch public data from
-            archive.org; like any web service, they see your requests and may log them under{' '}
-            <a href="https://archive.org/about/privacy.php" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
-              their privacy policy
-            </a>
-            . Anahad adds nothing to those requests.
+            <strong className="text-zinc-200">Requests to music sources.</strong> Search and playback fetch public data
+            from archive.org and the Openverse API (which aggregates Jamendo, Wikimedia Commons and Freesound); like any
+            web service, they see your requests and may log them under their own privacy policies. Anahad adds nothing to
+            those requests — no identifiers, no profiles.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Temporary audio cache is RAM-only.</strong> To reduce gaps between songs,
+            the player keeps small opening slices (≈256 KB) of upcoming tracks in memory, inside a hard budget you set in
+            Settings (Off / 32 MB / 96 MB). Slices are deleted when the track ends, when the queue changes, after 30
+            minutes, or via “Clear now”. Nothing audio-related is ever written to IndexedDB, Cache Storage, or disk, and
+            closing the tab releases everything.
           </li>
           <li>
             <strong className="text-zinc-200">History is optional.</strong> Disable it in Settings and plays stop being
@@ -53,7 +58,7 @@ export function PrivacyPage() {
         </h2>
         <div className="mt-3 space-y-4 text-xs leading-relaxed text-zinc-400">
           <div>
-            <p className="font-semibold text-zinc-200">Internet Archive (archive.org) — the only built-in catalog</p>
+            <p className="font-semibold text-zinc-200">Internet Archive (archive.org) — primary catalog</p>
             <p className="mt-1">
               Search metadata and audio files are fetched from the public advancedsearch/metadata APIs and download
               endpoints. Licenses vary <em>per item</em>: some uploads are Creative Commons, some are public domain, some
@@ -66,12 +71,38 @@ export function PrivacyPage() {
             </a>
           </div>
           <div>
+            <p className="font-semibold text-zinc-200">Openverse (openverse.org) — keyless CC aggregation</p>
+            <p className="mt-1">
+              Track search runs through the Openverse API (built by Creative Commons / WordPress), which indexes
+              full-length Creative Commons music. Tracks come from{' '}
+              <a href="https://www.jamendo.com" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                Jamendo
+              </a>
+              ,{' '}
+              <a href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                Wikimedia Commons
+              </a>{' '}
+              and{' '}
+              <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                Freesound
+              </a>{' '}
+              under their respective CC licenses — each track links to its source page for verification. Anonymous API
+              quota applies (≈200 searches/day); Anahad caches results locally to stay well inside it and shows a notice
+              when a source is temporarily unavailable.
+            </p>
+            <a href="https://openverse.org" target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-accent-soft hover:underline">
+              openverse.org <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+          <div>
             <p className="font-semibold text-zinc-200">Collections we lean on</p>
             <ul className="mt-1 list-inside list-disc space-y-0.5">
               <li>Netlabels — Creative Commons music from independent netlabels</li>
               <li>Live Music Archive (etree) — band-approved live concerts</li>
               <li>78rpm & George Blood collection — digitized historical discs</li>
               <li>Musopen — public-domain classical performances</li>
+              <li>Jamendo via Openverse — independent CC artists, full-length tracks</li>
+              <li>Wikimedia Commons — recordings including Indian classical, bhajans and folk</li>
             </ul>
           </div>
         </div>
@@ -83,9 +114,21 @@ export function PrivacyPage() {
         </h2>
         <ul className="mt-3 space-y-2.5 text-xs leading-relaxed text-zinc-400">
           <li>
-            <strong className="text-zinc-200">Jamendo, Free Music Archive:</strong> not integrated. Jamendo's API requires
-            a client ID and FMA's catalog availability is unstable — including them would break the zero-configuration
-            promise.
+            <strong className="text-zinc-200">Free Music Archive / FreePD:</strong> not integrated — FMA shut down its
+            public API and FreePD closed its site. There is nothing legitimate left to connect to.
+          </li>
+          <li>
+            <strong className="text-zinc-200">ccMixter:</strong> not integrated for playback — its query API is open,
+            but audio files are hotlink-protected to ccmixter.org domains. Playing them here would require spoofing a
+            Referer, i.e. circumventing access rules, which Anahad will not do.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Free To Use (freetouse.com):</strong> not integrated — its public API is
+            origin-locked to freetouse.com, so third-party web apps cannot call it. We don't proxy around that.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Jamendo direct:</strong> their API needs a registered client ID, which
+            would break the zero-configuration promise. Jamendo music remains available in-app through Openverse.
           </li>
           <li>
             <strong className="text-zinc-200">YouTube / Spotify:</strong> supported only via their official embedded
@@ -93,12 +136,18 @@ export function PrivacyPage() {
             for you — and never scrapes or extracts.
           </li>
           <li>
-            <strong className="text-zinc-200">Moods:</strong> archive metadata rarely tags moods, so Anahad estimates them
+            <strong className="text-zinc-200">Moods:</strong> source metadata rarely tags moods, so Anahad estimates them
             from titles/subjects and labels them “estimated”. Genre/language tags come from the source as-is.
           </li>
           <li>
-            <strong className="text-zinc-200">Quality:</strong> bitrates shown are computed from real file sizes. When a
-            source doesn't expose quality data, the UI says so instead of inventing numbers.
+            <strong className="text-zinc-200">Quality:</strong> bitrates shown are computed from real file sizes or taken
+            verbatim from the source. When a source doesn't expose quality data (typical for Openverse results), the UI
+            says “source-provided” instead of inventing numbers.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Prebuffering coverage:</strong> next-track prebuffering works only where a
+            source's host is verified CORS + Range capable (archive.org storage, Jamendo storage, Freesound CDN,
+            Wikimedia). Other hosts stream natively and still get metadata prefetching.
           </li>
         </ul>
       </section>

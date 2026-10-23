@@ -39,7 +39,10 @@ function makeTrack(i: number, overrides: Partial<Track> = {}): Track {
 function stubController() {
   const calls: string[] = []
   usePlayer.getState().registerController({
-    load: (url) => calls.push(`load:${url}`),
+    load: (req) => {
+      calls.push(`load:${req.url}`)
+      return Promise.resolve()
+    },
     play: async () => {
       calls.push('play')
     },

@@ -13,6 +13,9 @@ export interface GenreDef {
   label: string
   /** archive.org Lucene clause (verbatim, trusted — authored by this app). */
   clause: string
+  /** Openverse-native tag used for track-first providers (only when the tag
+   *  genuinely exists in Jamendo/Wikimedia/Freesound catalogs). */
+  openverseTag?: string
   /** Tailwind gradient classes for the card artwork. */
   gradient: string
   description: string
@@ -22,6 +25,7 @@ export interface MoodDef {
   id: string
   label: string
   clause: string
+  openverseTag?: string
   /** Keywords used to infer (estimate) a track's mood from title/subjects. */
   keywords: string[]
   gradient: string
@@ -58,6 +62,7 @@ export const GENRES: GenreDef[] = [
     id: 'indian-classical',
     label: 'Indian classical',
     clause: '(subject:("indian classical") OR subject:(raga) OR subject:(sitar) OR subject:(tabla))',
+    openverseTag: 'indian classical',
     gradient: 'from-orange-600 to-amber-400',
     description: 'Raga-based traditions — sitar, tabla, sarod and more.'
   },
@@ -72,6 +77,7 @@ export const GENRES: GenreDef[] = [
     id: 'carnatic',
     label: 'Carnatic',
     clause: 'subject:(carnatic)',
+    openverseTag: 'carnatic',
     gradient: 'from-emerald-600 to-lime-500',
     description: 'South Indian classical music — kritis and ragams.'
   },
@@ -79,6 +85,7 @@ export const GENRES: GenreDef[] = [
     id: 'bhajans',
     label: 'Bhajans',
     clause: '(subject:(bhajan) OR title:(bhajan))',
+    openverseTag: 'bhajan',
     gradient: 'from-amber-400 to-amber-600',
     description: 'Devotional songs of praise from many traditions.'
   },
@@ -86,6 +93,7 @@ export const GENRES: GenreDef[] = [
     id: 'devotional',
     label: 'Devotional',
     clause: '(subject:(devotional) OR subject:(aarti) OR subject:(kirtan) OR subject:(gurbani))',
+    openverseTag: 'devotional',
     gradient: 'from-amber-600 to-yellow-500',
     description: 'Aartis, kirtans, gurbani and other devotional music.'
   },
@@ -100,6 +108,7 @@ export const GENRES: GenreDef[] = [
     id: 'sufi',
     label: 'Sufi',
     clause: '(subject:(sufi) OR subject:(qawwali) OR title:(qawwali))',
+    openverseTag: 'sufi',
     gradient: 'from-fuchsia-700 to-amber-500',
     description: 'Qawwalis and Sufi devotional music.'
   },
@@ -107,6 +116,7 @@ export const GENRES: GenreDef[] = [
     id: 'punjabi',
     label: 'Punjabi',
     clause: '(language:(pan OR panjabi OR punjabi) OR subject:(bhangra))',
+    openverseTag: 'bhangra',
     gradient: 'from-lime-500 to-green-600',
     description: 'Bhangra, folk and contemporary Punjabi music.'
   },
@@ -114,6 +124,7 @@ export const GENRES: GenreDef[] = [
     id: 'folk',
     label: 'Folk',
     clause: '(collection:(netlabels) AND subject:(folk)) OR (subject:(indian folk) AND format:(MP3))',
+    openverseTag: 'folk',
     gradient: 'from-teal-600 to-emerald-500',
     description: 'Traditional and contemporary folk from around the world.'
   },
@@ -121,6 +132,7 @@ export const GENRES: GenreDef[] = [
     id: 'pop',
     label: 'Pop',
     clause: 'collection:(netlabels) AND subject:(pop)',
+    openverseTag: 'pop',
     gradient: 'from-pink-500 to-rose-600',
     description: 'Independent pop releases under Creative Commons.'
   },
@@ -128,6 +140,7 @@ export const GENRES: GenreDef[] = [
     id: 'rock',
     label: 'Rock',
     clause: '(collection:(netlabels) AND subject:(rock)) OR collection:(etree)',
+    openverseTag: 'rock',
     gradient: 'from-red-600 to-zinc-600',
     description: 'Independent rock plus band-approved live concerts.'
   },
@@ -135,6 +148,7 @@ export const GENRES: GenreDef[] = [
     id: 'hip-hop',
     label: 'Hip-hop',
     clause: '(collection:(netlabels) AND (subject:(hip-hop) OR subject:(hip hop) OR subject:(rap)))',
+    openverseTag: 'hiphop',
     gradient: 'from-zinc-600 to-zinc-800',
     description: 'CC-licensed rap and hip-hop from netlabels.'
   },
@@ -142,6 +156,7 @@ export const GENRES: GenreDef[] = [
     id: 'electronic',
     label: 'Electronic',
     clause: 'collection:(netlabels) AND subject:(electronic)',
+    openverseTag: 'electronic',
     gradient: 'from-cyan-600 to-blue-600',
     description: 'Ambient techno, IDM, house and netlabel electronica.'
   },
@@ -149,6 +164,7 @@ export const GENRES: GenreDef[] = [
     id: 'jazz',
     label: 'Jazz',
     clause: '(collection:(netlabels) AND subject:(jazz)) OR (collection:(georgeblood) AND subject:(jazz))',
+    openverseTag: 'jazz',
     gradient: 'from-amber-700 to-yellow-600',
     description: 'Netlabel jazz and vintage 78rpm sides.'
   },
@@ -156,6 +172,7 @@ export const GENRES: GenreDef[] = [
     id: 'blues',
     label: 'Blues',
     clause: '((collection:(netlabels) OR collection:(opensource_audio)) AND subject:(blues))',
+    openverseTag: 'blues',
     gradient: 'from-indigo-800 to-slate-700',
     description: 'Blues recordings old and new.'
   },
@@ -163,6 +180,7 @@ export const GENRES: GenreDef[] = [
     id: 'classical',
     label: 'Classical (Western)',
     clause: '(collection:(musopen) OR (collection:(netlabels) AND subject:(classical)))',
+    openverseTag: 'classical',
     gradient: 'from-stone-600 to-amber-700',
     description: 'Public-domain Western classical — symphonies, quartets, sonatas.'
   },
@@ -170,6 +188,7 @@ export const GENRES: GenreDef[] = [
     id: 'lo-fi',
     label: 'Lo-fi',
     clause: '((subject:(lo-fi) OR subject:(lofi) OR subject:(chillhop)) AND NOT collection:(radioprograms))',
+    openverseTag: 'lofi',
     gradient: 'from-violet-700 to-purple-600',
     description: 'Chillhop and lo-fi beats for focus and study.'
   },
@@ -177,6 +196,7 @@ export const GENRES: GenreDef[] = [
     id: 'ambient',
     label: 'Ambient',
     clause: '(collection:(netlabels) AND subject:(ambient))',
+    openverseTag: 'ambient',
     gradient: 'from-sky-700 to-cyan-500',
     description: 'Atmospheric soundscapes and drones.'
   },
@@ -184,6 +204,7 @@ export const GENRES: GenreDef[] = [
     id: 'instrumental',
     label: 'Instrumental',
     clause: '(collection:(netlabels) AND subject:(instrumental))',
+    openverseTag: 'instrumental',
     gradient: 'from-slate-600 to-zinc-700',
     description: 'Wordless music across genres.'
   },
@@ -191,6 +212,7 @@ export const GENRES: GenreDef[] = [
     id: 'acoustic',
     label: 'Acoustic',
     clause: '(collection:(netlabels) AND subject:(acoustic))',
+    openverseTag: 'acoustic',
     gradient: 'from-orange-500 to-amber-600',
     description: 'Stripped-down, unplugged performances.'
   },
@@ -221,6 +243,7 @@ export const MOODS: MoodDef[] = [
     id: 'sad',
     label: 'Sad',
     clause: '((subject:(sad) OR title:(sad OR lonely OR tears)) AND NOT collection:(radioprograms))',
+    openverseTag: 'sad',
     keywords: ['sad', 'sorrow', 'lonely', 'loneliness', 'tears', 'crying', 'heartbreak', 'broken heart', 'dard', 'bewafa', 'judai', 'viraha'],
     gradient: 'from-slate-700 to-blue-900',
     description: 'Melancholy ballads and sorrowful songs.'
@@ -229,6 +252,7 @@ export const MOODS: MoodDef[] = [
     id: 'happy',
     label: 'Happy',
     clause: '(subject:(happy) OR subject:(feel good) OR title:(happy)) AND format:(MP3)',
+    openverseTag: 'happy',
     keywords: ['happy', 'joy', 'cheerful', 'feel good', 'sunny', 'smile', 'khushi'],
     gradient: 'from-yellow-400 to-amber-500',
     description: 'Uplifting, feel-good music.'
@@ -237,6 +261,7 @@ export const MOODS: MoodDef[] = [
     id: 'romantic',
     label: 'Romantic',
     clause: '(subject:(romantic) OR subject:(love songs) OR title:(love)) AND format:(MP3) AND NOT collection:(radioprograms)',
+    openverseTag: 'romantic',
     keywords: ['love', 'romantic', 'romance', 'pyar', 'ishq', 'mohabbat', 'valentine', 'beloved', 'dil'],
     gradient: 'from-rose-500 to-pink-600',
     description: 'Love songs and tender duets.'
@@ -245,6 +270,7 @@ export const MOODS: MoodDef[] = [
     id: 'peaceful',
     label: 'Peaceful',
     clause: '(subject:(peaceful) OR subject:(meditation) OR subject:(relaxation)) AND format:(MP3)',
+    openverseTag: 'calm',
     keywords: ['peaceful', 'calm', 'serene', 'meditation', 'relax', 'soothing', 'tranquil', 'shanti'],
     gradient: 'from-teal-500 to-emerald-600',
     description: 'Calm, meditative and restful soundscapes.'
@@ -253,6 +279,7 @@ export const MOODS: MoodDef[] = [
     id: 'devotional',
     label: 'Devotional',
     clause: '(subject:(devotional) OR subject:(bhajan) OR subject:(aarti) OR subject:(kirtan) OR subject:(gospel))',
+    openverseTag: 'devotional',
     keywords: ['bhajan', 'aarti', 'kirtan', 'devotional', 'prayer', 'gospel', 'hymn', 'stotra', 'mantra', 'gurbani'],
     gradient: 'from-amber-500 to-orange-600',
     description: 'Songs of devotion across traditions.'
@@ -261,6 +288,7 @@ export const MOODS: MoodDef[] = [
     id: 'motivational',
     label: 'Motivational',
     clause: '(subject:(motivational) OR subject:(inspiring) OR title:(anthem)) AND format:(MP3)',
+    openverseTag: 'motivational',
     keywords: ['motivational', 'inspiring', 'inspiration', 'anthem', 'triumphant', 'heroic', 'rise'],
     gradient: 'from-orange-500 to-red-600',
     description: 'Anthems to move you forward.'
@@ -269,6 +297,7 @@ export const MOODS: MoodDef[] = [
     id: 'energetic',
     label: 'Energetic',
     clause: '(subject:(energetic) OR subject:(dance) OR subject:(edm) OR subject:(uptempo)) AND format:(MP3)',
+    openverseTag: 'energetic',
     keywords: ['energetic', 'dance', 'edm', 'party', 'uptempo', 'banger', 'club', 'bhangra'],
     gradient: 'from-fuchsia-500 to-orange-500',
     description: 'High-tempo dance and party music.'
@@ -277,6 +306,7 @@ export const MOODS: MoodDef[] = [
     id: 'relaxing',
     label: 'Relaxing',
     clause: '(subject:(relaxing) OR subject:(chillout) OR subject:(downtempo)) AND format:(MP3)',
+    openverseTag: 'relaxing',
     keywords: ['relaxing', 'chill', 'chillout', 'downtempo', 'laid back', 'easy listening', 'smooth'],
     gradient: 'from-cyan-500 to-teal-600',
     description: 'Unwind with easy, unhurried music.'
@@ -285,6 +315,7 @@ export const MOODS: MoodDef[] = [
     id: 'focus',
     label: 'Focus',
     clause: '(subject:(lo-fi) OR subject:(lofi) OR subject:(study music) OR subject:(instrumental)) AND format:(MP3) AND NOT collection:(radioprograms)',
+    openverseTag: 'lofi',
     keywords: ['lo-fi', 'lofi', 'study', 'focus', 'concentration', 'instrumental', 'chillhop'],
     gradient: 'from-violet-600 to-indigo-700',
     description: 'Beats and instrumentals for deep work.'
@@ -293,6 +324,7 @@ export const MOODS: MoodDef[] = [
     id: 'workout',
     label: 'Workout',
     clause: '(subject:(workout) OR subject:(high energy) OR subject:(house music)) AND format:(MP3)',
+    openverseTag: 'workout',
     keywords: ['workout', 'gym', 'high energy', 'running', 'power', 'pump'],
     gradient: 'from-red-500 to-orange-600',
     description: 'Drive and adrenaline for training.'
@@ -309,6 +341,7 @@ export const MOODS: MoodDef[] = [
     id: 'melancholic',
     label: 'Melancholic',
     clause: '(subject:(melancholic) OR subject:(melancholy) OR subject:(blues)) AND format:(MP3)',
+    openverseTag: 'melancholic',
     keywords: ['melancholic', 'melancholy', 'wistful', 'blues', 'bittersweet', 'gham'],
     gradient: 'from-gray-600 to-slate-800',
     description: 'Bittersweet and wistful moods.'
@@ -317,6 +350,7 @@ export const MOODS: MoodDef[] = [
     id: 'sleep',
     label: 'Sleep',
     clause: '(subject:(sleep) OR subject:(lullaby) OR subject:(white noise) OR subject:(drones)) AND format:(MP3)',
+    openverseTag: 'sleep',
     keywords: ['sleep', 'lullaby', 'nocturne', 'drones', 'night', 'dream', 'insomnia'],
     gradient: 'from-indigo-900 to-slate-900',
     description: 'Slow, quiet music for drifting off.'

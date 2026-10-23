@@ -37,9 +37,10 @@ export function QualityMenu({ compact = false }: { compact?: boolean }) {
   }, [open])
 
   const hasLossless = Boolean(track?.formats.some((f) => f.isLossless))
+  const singleFormat = Boolean(track && track.formats.length === 1)
   const currentLabel = player.currentFormat
     ? `${player.currentFormat.label}${player.currentFormat.approxBitrateKbps ? ` · ≈${player.currentFormat.approxBitrateKbps} kbps` : ''}`
-    : track && track.source !== 'internet-archive'
+    : track && (track.source === 'youtube' || track.source === 'spotify')
       ? 'Provider-controlled'
       : 'Source default'
 
@@ -84,7 +85,9 @@ export function QualityMenu({ compact = false }: { compact?: boolean }) {
           <p className="px-3 py-2 text-[10px] leading-relaxed text-zinc-500">
             {hasLossless
               ? 'Lossless (FLAC) available for this track.'
-              : 'Bitrates are computed from real file sizes — never invented. Options the source doesn’t provide are disabled.'}
+              : singleFormat
+                ? 'This source provides one format per track (labeled as the original) — bitrate stays honestly “source-provided” when upstream does not publish it.'
+                : 'Bitrates are computed from real file sizes — never invented. Options the source doesn’t provide are disabled.'}
           </p>
         </div>
       ) : null}

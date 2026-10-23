@@ -2,14 +2,16 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Sparkles, Clock3 } from 'lucide-react'
+import { Sparkles, Clock3, Radio } from 'lucide-react'
 import { fetchAlbumsFor, fetchRecommendations } from '../lib/discover'
+import { fetchSessionMix, getSessionPlays } from '../lib/related'
 import { GENRES } from '../config/catalog'
 import { AlbumCard, AlbumCardSkeleton } from '../components/AlbumCard'
 import { Section } from '../components/Section'
 import { TrackRow } from '../components/TrackRow'
 import { ErrorState, Skeleton } from '../components/ui'
 import { useLibrary } from '../stores/library'
+import { usePlayer } from '../stores/player'
 import type { AlbumResult } from '../types'
 
 const SPOTLIGHTS = ['bollywood', 'sufi', 'lo-fi', 'live', 'carnatic', 'electronic']
@@ -107,6 +109,8 @@ export function HomePage() {
         )}
       </Section>
 
+      <SessionMix />
+
       <SpotlightRows />
 
       <Section title="Browse by genre" seeAllTo="/genres">
@@ -129,7 +133,10 @@ export function HomePage() {
 
       <footer className="flex items-center gap-2 pb-4 pt-2 text-[11px] text-zinc-600">
         <Clock3 className="h-3.5 w-3.5" aria-hidden />
-        Audio streamed from archive.org under each item's own license. <Link to="/privacy" className="underline hover:text-zinc-400">How attribution works</Link>
+        Audio streamed from the Internet Archive and Openverse (Jamendo · Wikimedia · Freesound) under each track's own license.{' '}
+        <Link to="/privacy" className="underline hover:text-zinc-400">
+          How attribution works
+        </Link>
       </footer>
     </div>
   )
@@ -142,6 +149,39 @@ function SpotlightRows() {
         <SpotlightRow key={id} genreId={id} />
       ))}
     </>
+  )
+}
+
+/** "Session mix" — related to what you played this session (in-memory only). */
+function SessionMix() {
+  const sessionCount = usePlayer((s) => s.queue.length) // re-render hook: engine events refresh this
+  const plays = getSessionPlays()
+  const mix = useQuery({
+    queryKey: ['session-mix', plays.length, plays[0]?.id ?? null, sessionCount],
+    queryFn: ({ signal }) => fetchSessionMix(6, signal),
+    staleTime: 60 * 1000,
+    enabled: plays.length >= 2
+  })
+
+  if (plays.length < 2 || mix.isPending || mix.isError || !mix.data || mix.data.length === 0) return null
+
+  return (
+    <Section
+      title="Session mix"
+      subtitle="Related to what you've been playing in this tab — computed locally, never stored"
+    >
+      <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
+        {mix.data.map((r) => (
+          <div key={r.track.id}>
+            <p className="pl-12 pt-1.5 text-[11px] italic text-zinc-500">
+              <Radio className="mr-1 inline h-3 w-3 text-accent" aria-hidden />
+              {r.reason}
+            </p>
+            <TrackRow track={r.track} contextTracks={mix.data!.map((x) => x.track)} contextLabel="Session mix" showAlbum={false} />
+          </div>
+        ))}
+      </div>
+    </Section>
   )
 }
 

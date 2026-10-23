@@ -2,11 +2,12 @@
 
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { Heart, ListEnd, ListPlus, ListStart, MoreHorizontal, Pause, Play, Plus, X } from 'lucide-react'
+import { Heart, ListEnd, ListPlus, ListStart, Loader2, MoreHorizontal, Pause, Play, Plus, X } from 'lucide-react'
 import type { Track } from '../types'
 import { usePlayer, selectCurrentTrack } from '../stores/player'
 import { useLibrary } from '../stores/library'
 import { formatDuration } from '../lib/format'
+import { sourceChipFor } from '../lib/sourceStatus'
 import { toast } from './ui'
 import { AddToPlaylistModal } from './AddToPlaylistModal'
 
@@ -29,11 +30,12 @@ export function TrackRow({
   const current = usePlayer(selectCurrentTrack)
   const isCurrent = current?.id === track.id
   const isPlaying = isCurrent && player.isPlaying && !player.isLoading
+  const isBuffering = isCurrent && player.isBuffering && !player.isLoading
   const liked = useLibrary((s) => Boolean(s.likedTracks[track.id]))
   const [menuOpen, setMenuOpen] = useState(false)
   const [playlistModal, setPlaylistModal] = useState(false)
 
-  const playable = track.formats.length > 0 || track.source !== 'internet-archive'
+  const playable = track.formats.length > 0
 
   function handlePlay() {
     if (isCurrent) {
@@ -71,6 +73,11 @@ export function TrackRow({
             <span className="h-2" />
           </span>
         ) : null}
+        {isBuffering ? (
+          <span className="absolute bottom-1 right-1" aria-hidden>
+            <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+          </span>
+        ) : null}
       </button>
 
       <div className="min-w-0 flex-1">
@@ -90,7 +97,12 @@ export function TrackRow({
           <Link to={`/artist/${encodeURIComponent(track.artist)}`} className="truncate hover:text-zinc-300 hover:underline">
             {track.artist}
           </Link>
-          {showAlbum ? (
+          {track.source !== 'internet-archive' ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-zinc-600">{sourceChipFor(track.source, track.collection)}</span>
+            </>
+          ) : showAlbum ? (
             <>
               <span aria-hidden>·</span>
               <Link to={`/album/${encodeURIComponent(track.identifier)}`} className="truncate hover:text-zinc-300 hover:underline">

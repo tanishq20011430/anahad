@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Filter, Link2, Play, Search as SearchIcon, X } from 'lucide-react'
-import { unifiedSearch, buildSuggestions } from '../lib/searchService'
+import { unifiedSearch, unifiedTrackSearch, buildSuggestions } from '../lib/searchService'
 import { GENRES, LANGUAGES } from '../config/catalog'
 import { AlbumCard, AlbumCardSkeleton } from '../components/AlbumCard'
-import { EmptyState, ErrorState, toast } from '../components/ui'
+import { TrackRow } from '../components/TrackRow'
+import { EmptyState, ErrorState, Skeleton, DegradedSources, Spinner, toast } from '../components/ui'
 import { parseExternalUrl, embedSrc } from '../lib/external'
 import { useDebounce } from '../hooks/useDebounce'
 import type { ExternalEmbed } from '../types'
@@ -35,6 +36,36 @@ export function SearchPage() {
         sort: debounced ? 'relevance' : 'downloads',
         signal
       })
+  })
+
+  // Track-first results, queried PER SOURCE so one slow provider never
+  // blocks the other (Openverse's origin can be slow on cold queries).
+  const iaTracks = useQuery({
+    queryKey: ['track-search-ia', debounced, genre],
+    queryFn: ({ signal }) =>
+      unifiedTrackSearch({
+        query: debounced || undefined,
+        genre: genre ? (GENRES.find((g) => g.id === genre)?.clause ?? undefined) : undefined,
+        rows: 10,
+        providers: ['internet-archive'],
+        signal
+      }),
+    staleTime: 3 * 60 * 1000,
+    enabled: debounced.trim().length > 0
+  })
+  const ovTracks = useQuery({
+    queryKey: ['track-search-ov', debounced, genre],
+    queryFn: ({ signal }) =>
+      unifiedTrackSearch({
+        query: debounced || undefined,
+        tag: genre ? (GENRES.find((g) => g.id === genre)?.openverseTag ?? undefined) : undefined,
+        rows: 12,
+        providers: ['openverse'],
+        signal
+      }),
+    staleTime: 3 * 60 * 1000,
+    retry: 0, // the adapter already retries transient source failures internally
+    enabled: debounced.trim().length > 0
   })
 
   // Reset page when filters change
@@ -147,9 +178,74 @@ export function SearchPage() {
         ) : null}
       </div>
 
+      {debounced.trim() ? <TrackResults iaTracks={iaTracks} ovTracks={ovTracks} query={debounced} /> : null}
       <SearchResults search={search} page={page} onPage={setPage} query={debounced} />
       <ExternalLinkTool />
     </div>
+  )
+}
+
+type TrackQuery = ReturnType<typeof useQuery<{ tracks: import('../types').Track[]; total: number; degraded?: import('../types').SourceDegradation[] }>>
+
+function TrackResults({ iaTracks, ovTracks, query }: { iaTracks: TrackQuery; ovTracks: TrackQuery; query: string }) {
+  const ia = iaTracks.data?.tracks ?? []
+  const ov = ovTracks.data?.tracks ?? []
+  if (iaTracks.isPending && ovTracks.isPending) {
+    return (
+      <section aria-label="Matching tracks" className="space-y-2">
+        <h2 className="text-sm font-bold text-zinc-100">Tracks</h2>
+        {[...Array(4)].map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </section>
+    )
+  }
+  if (iaTracks.isError && ovTracks.isError) return null // album results below still work
+  const contextTracks = [...ia, ...ov]
+  return (
+    <section aria-label="Matching tracks" className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-zinc-100">Tracks</h2>
+        <p className="text-[11px] text-zinc-600">multi-source — Internet Archive + Openverse (Jamendo · Wikimedia · Freesound)</p>
+      </div>
+      {ia.length === 0 && ov.length === 0 && !ovTracks.isPending ? (
+        <div className="space-y-2">
+          <DegradedSources degraded={ovTracks.data?.degraded} />
+          <p className="rounded-xl bg-surface-raised p-3 text-xs text-zinc-500 ring-1 ring-white/5">
+            No direct track matches for “{query}” right now — album results are below.
+          </p>
+        </div>
+      ) : (
+        <>
+          {ia.length > 0 ? (
+            <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
+              {ia.map((t) => (
+                <TrackRow key={t.id} track={t} contextTracks={contextTracks} contextLabel={`Search: ${query}`} />
+              ))}
+            </div>
+          ) : null}
+          {ovTracks.isPending ? (
+            <p className="flex items-center gap-2 rounded-xl bg-surface-raised/50 p-3 text-xs text-zinc-500 ring-1 ring-white/5">
+              <Spinner className="h-3.5 w-3.5 text-accent" /> Loading Openverse tracks (Jamendo · Wikimedia · Freesound)…
+            </p>
+          ) : ov.length > 0 ? (
+            <div className="space-y-1">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">From Openverse</p>
+              <DegradedSources degraded={ovTracks.data?.degraded} />
+              <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
+                {ov.map((t) => (
+                  <TrackRow key={t.id} track={t} contextTracks={contextTracks} contextLabel={`Search: ${query}`} />
+                ))}
+              </div>
+            </div>
+          ) : ovTracks.isError ? (
+            <p className="rounded-xl bg-amber-500/10 p-3 text-[11px] text-amber-300/90 ring-1 ring-amber-500/20" role="status">
+              Openverse is not answering right now (slow origin or anonymous quota). Internet Archive results are unaffected.
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
   )
 }
 
@@ -159,7 +255,7 @@ function SearchResults({
   onPage,
   query
 }: {
-  search: ReturnType<typeof useQuery<{ albums: import('../types').AlbumResult[]; total: number }>>
+  search: ReturnType<typeof useQuery<import('../types').SearchResponse>>
   page: number
   onPage: (p: number) => void
   query: string
@@ -174,21 +270,25 @@ function SearchResults({
     )
   }
   if (search.isError) {
-    return <ErrorState message="Search is unavailable right now — the archive may be rate-limiting us. Please try again shortly." onRetry={() => void search.refetch()} />
+    return <ErrorState message="Album search is unavailable right now — the archive may be rate-limiting us. Track results above still work when sources are healthy." onRetry={() => void search.refetch()} />
   }
   const albums = search.data?.albums ?? []
   if (albums.length === 0) {
     return (
-      <EmptyState
-        title={query ? `No results for “${query}”` : 'Nothing to show yet'}
-        hint={query ? 'Check the spelling, or try broader terms like a genre or artist name.' : 'Type above to search thousands of freely licensed recordings.'}
-      />
+      <div className="space-y-3">
+        <DegradedSources degraded={search.data?.degraded} />
+        <EmptyState
+          title={query ? `No album results for “${query}”` : 'Nothing to show yet'}
+          hint={query ? 'Check the spelling, or try broader terms like a genre or artist name.' : 'Type above to search thousands of freely licensed recordings.'}
+        />
+      </div>
     )
   }
   return (
     <div className="space-y-4">
+      <DegradedSources degraded={search.data?.degraded} />
       <p className="text-xs text-zinc-500">
-        {search.data?.total ? `${new Intl.NumberFormat().format(search.data.total)} matching recordings` : 'Results'} · source: Internet Archive
+        {search.data?.total ? `${new Intl.NumberFormat().format(search.data.total)} matching recordings` : 'Results'} · albums: Internet Archive
       </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {albums.map((a) => (

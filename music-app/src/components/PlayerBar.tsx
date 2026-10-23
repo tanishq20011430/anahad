@@ -27,6 +27,7 @@ import {
 import { usePlayer, selectCurrentTrack } from '../stores/player'
 import { useLibrary } from '../stores/library'
 import { formatDuration, clamp } from '../lib/format'
+import { sourceChipFor } from '../lib/sourceStatus'
 import { QualityMenu } from './QualityMenu'
 import { ExpandedPlayer } from './ExpandedPlayer'
 
@@ -38,10 +39,12 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
 
   if (!track) return null
 
-  const isEmbed = track.source !== 'internet-archive'
+  const isEmbed = track.source === 'youtube' || track.source === 'spotify'
   const duration = player.duration || track.durationSec || 0
   const shownTime = scrub ?? player.currentTime
   const fill = duration > 0 ? clamp((shownTime / duration) * 100, 0, 100) : 0
+  const bufferedPct = duration > 0 ? clamp((player.bufferedEnd / duration) * 100, 0, 100) : 0
+  const showBufferSpinner = player.isBuffering && !player.isLoading
   const VolIcon = player.muted || player.volume === 0 ? VolumeX : player.volume < 0.5 ? Volume1 : Volume2
 
   const transport = (
@@ -54,13 +57,18 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
       >
         <Shuffle className="h-4 w-4" />
       </button>
-      <button onClick={() => void player.prev()} aria-label="Previous track" disabled={isEmbed} className="rounded-full p-2 text-zinc-300 transition hover:text-white disabled:opacity-30">
+      <button
+        onClick={() => void player.prev()}
+        aria-label="Previous track"
+        disabled={isEmbed}
+        className="rounded-full p-2 text-zinc-300 transition hover:text-white disabled:opacity-30"
+      >
         <SkipBack className="h-5 w-5 fill-current" />
       </button>
       <button
         onClick={() => void player.togglePlay()}
         aria-label={player.isPlaying ? 'Pause' : 'Play'}
-        className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105 active:scale-95"
+        className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105 active:scale-95"
       >
         {player.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : player.isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 translate-x-px fill-current" />}
       </button>
@@ -137,7 +145,10 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
               <Link to={`/artist/${encodeURIComponent(track.artist)}`} className="block truncate text-xs text-zinc-500 hover:text-zinc-300 hover:underline">
                 {track.artist}
               </Link>
-              {player.contextLabel ? <p className="truncate text-[10px] text-zinc-600">from {player.contextLabel}</p> : null}
+              <p className="truncate text-[10px] text-zinc-600">
+                {sourceChipFor(track.source, track.collection)}
+                {player.contextLabel ? ` · from ${player.contextLabel}` : ''}
+              </p>
             </div>
             <LikeButton />
           </div>
@@ -147,27 +158,42 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
             {transport}
             <div className="flex w-full items-center gap-2">
               <span className="w-10 text-right text-[10px] tabular-nums text-zinc-500">{formatDuration(shownTime)}</span>
-              <input
-                type="range"
-                min={0}
-                max={duration || 1}
-                step={1}
-                value={shownTime}
-                onChange={(e) => setScrub(Number(e.target.value))}
-                onPointerUp={() => {
-                  if (scrub !== null) player.seek(scrub)
-                  setScrub(null)
-                }}
-                onKeyUp={() => {
-                  if (scrub !== null) player.seek(scrub)
-                  setScrub(null)
-                }}
-                aria-label="Seek"
-                disabled={isEmbed}
-                style={{ ['--fill' as string]: `${fill}%` }}
-                className="w-full flex-1"
-              />
+              <div className="relative flex-1">
+                <input
+                  type="range"
+                  min={0}
+                  max={duration || 1}
+                  step={1}
+                  value={shownTime}
+                  onChange={(e) => setScrub(Number(e.target.value))}
+                  onPointerUp={() => {
+                    if (scrub !== null) player.seek(scrub)
+                    setScrub(null)
+                  }}
+                  onKeyUp={() => {
+                    if (scrub !== null) player.seek(scrub)
+                    setScrub(null)
+                  }}
+                  aria-label="Seek"
+                  aria-valuetext={`${formatDuration(shownTime)} of ${formatDuration(duration)}`}
+                  disabled={isEmbed}
+                  data-buffered={bufferedPct > fill + 0.5 ? '1' : undefined}
+                  style={{
+                    ['--fill' as string]: `${fill}%`,
+                    ['--buffered' as string]: `${Math.max(bufferedPct, fill)}%`
+                  }}
+                  className="w-full"
+                />
+                {showBufferSpinner ? (
+                  <span className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2" aria-hidden>
+                    <Loader2 className="h-3 w-3 animate-spin text-amber-400/80" />
+                  </span>
+                ) : null}
+              </div>
               <span className="w-10 text-[10px] tabular-nums text-zinc-500">{formatDuration(duration)}</span>
+              <span className="sr-only" role="status">
+                {showBufferSpinner ? 'Buffering' : player.playbackFromCache ? 'Playing from preloaded audio' : ''}
+              </span>
             </div>
           </div>
 

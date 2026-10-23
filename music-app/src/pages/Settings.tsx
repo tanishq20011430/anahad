@@ -1,11 +1,14 @@
-/** Settings: theme, quality, history, data controls, shortcuts, transparency. */
+/** Settings: theme, quality, sources, playback engine, history, data controls, transparency. */
 
-import { useState } from 'react'
-import { Moon, Sun, Trash2, ShieldCheck, Keyboard, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Moon, Sun, Trash2, ShieldCheck, Keyboard, Sparkles, Gauge, Globe } from 'lucide-react'
 import { useSettings } from '../stores/settings'
 import { useLibrary } from '../stores/library'
+import { audioCache } from '../lib/audioCache'
+import { preload } from '../lib/preload'
+import { VERIFIED_SOURCES, EXCLUDED_SOURCES } from '../lib/sourceStatus'
 import { toast } from '../components/ui'
-import type { QualityPreference } from '../types'
+import { CACHE_BUDGET_LABEL, type CacheMode, type QualityPreference } from '../types'
 import { WEIGHTS } from '../lib/recommend'
 
 const QUALITY_HELP: Record<QualityPreference, string> = {
@@ -22,7 +25,21 @@ export function SettingsPage() {
   const quality = useSettings((s) => s.quality)
   const historyEnabled = useSettings((s) => s.historyEnabled)
   const autoplayNext = useSettings((s) => s.autoplayNext)
+  const preloadEnabled = useSettings((s) => s.preloadEnabled)
+  const cacheMode = useSettings((s) => s.cacheMode)
+  const sources = useSettings((s) => s.sources)
   const [confirmWipe, setConfirmWipe] = useState(false)
+  const [cacheStats, setCacheStats] = useState(audioCache.stats())
+  const [preloadInfo, setPreloadInfo] = useState(preload.getInfo())
+
+  // Live engine diagnostics (cheap; the underlying stats are plain counters).
+  useEffect(() => {
+    const t = setInterval(() => {
+      setCacheStats(audioCache.stats())
+      setPreloadInfo(preload.getInfo())
+    }, 2000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -68,6 +85,98 @@ export function SettingsPage() {
         <SettingRow label="Autoplay next track" hint="Continue through the queue when a track ends. Failed tracks are skipped automatically.">
           <Toggle checked={autoplayNext} onChange={(v) => useSettings.getState().setAutoplayNext(v)} label="Autoplay next" />
         </SettingRow>
+      </Section>
+
+      <Section title="Playback engine" icon={<Gauge className="h-4 w-4" />}>
+        <SettingRow
+          label="Next-track preloading"
+          hint={
+            preloadEnabled
+              ? preloadInfo.state === 'primed'
+                ? 'On — the next track’s opening seconds are already buffered in memory for a gapless handoff.'
+                : preloadInfo.state === 'priming'
+                  ? 'On — buffering the next track’s opening seconds now.'
+                  : preloadInfo.state === 'skipped' && preloadInfo.reason?.includes('streams directly')
+                    ? 'On — upcoming metadata is prefetched; this source’s host streams directly (no prebuffer possible).'
+                    : preloadInfo.state === 'skipped'
+                      ? `On — next track not prebuffered: ${preloadInfo.reason ?? 'unknown reason'}.`
+                      : 'On — upcoming track metadata is fetched early and a small slice of audio (≈256 KB) is buffered in RAM.'
+              : 'Off — tracks load only when they start.'
+          }
+        >
+          <Toggle checked={preloadEnabled} onChange={(v) => useSettings.getState().setPreloadEnabled(v)} label="Preload next track" />
+        </SettingRow>
+        <SettingRow label="Temporary audio cache" hint="Bounded in-RAM slices of upcoming audio. Never written to disk, auto-deleted after the track ends, on queue changes, after 30 minutes, or when you clear it.">
+          <select
+            value={cacheMode}
+            onChange={(e) => useSettings.getState().setCacheMode(e.target.value as CacheMode)}
+            aria-label="Temporary audio cache size"
+            className="rounded-lg bg-black/30 px-3 py-2 text-xs text-zinc-200 ring-1 ring-white/10 focus:outline-none"
+          >
+            {(Object.keys(CACHE_BUDGET_LABEL) as CacheMode[]).map((m) => (
+              <option key={m} value={m}>
+                {CACHE_BUDGET_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        </SettingRow>
+        <SettingRow
+          label="Cache usage"
+          hint={
+            cacheStats.entries === 0
+              ? 'Nothing buffered right now.'
+              : `${(cacheStats.bytes / 1024 / 1024).toFixed(1)} MB in ${cacheStats.entries} slice${cacheStats.entries === 1 ? '' : 's'}${cacheStats.unavailableHosts.length > 0 ? ` · ${cacheStats.unavailableHosts.length} source host(s) stream natively (no prebuffer possible)` : ''}`
+          }
+        >
+          <button
+            onClick={() => {
+              audioCache.clear()
+              preload.cancelAll()
+              setCacheStats(audioCache.stats())
+              toast('Temporary audio cache cleared')
+            }}
+            className="rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10"
+          >
+            Clear now
+          </button>
+        </SettingRow>
+      </Section>
+
+      <Section title="Sources" icon={<Globe className="h-4 w-4" />}>
+        <p className="text-xs leading-relaxed text-zinc-500">
+          Only verified-working sources are listed as connected. Each one was checked against the live API (CORS, direct
+          audio, licenses) before being enabled.
+        </p>
+        {VERIFIED_SOURCES.map((s) => (
+          <SettingRow
+            key={s.id}
+            label={s.label}
+            hint={`${s.summary} Verified ${s.verifiedAt}.${s.limits.length ? ` Limits: ${s.limits.join(' ')}` : ''}`}
+          >
+            {s.id !== 'internet-archive' ? (
+              <Toggle
+                checked={sources[s.id as 'internet-archive' | 'openverse']}
+                onChange={(v) => useSettings.getState().setSourceEnabled(s.id as 'internet-archive' | 'openverse', v)}
+                label={`Use ${s.label}`}
+              />
+            ) : (
+              <span className="text-[11px] text-zinc-600">primary</span>
+            )}
+          </SettingRow>
+        ))}
+        <div className="rounded-lg bg-black/20 p-3">
+          <p className="text-xs font-semibold text-zinc-400">Evaluated but not integrated (access rules honored)</p>
+          <ul className="mt-1.5 space-y-1.5 text-[11px] leading-relaxed text-zinc-500">
+            {EXCLUDED_SOURCES.map((e) => (
+              <li key={e.label}>
+                <a href={e.homeUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-zinc-400 underline decoration-zinc-700 hover:text-zinc-300">
+                  {e.label}
+                </a>{' '}
+                — {e.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
       </Section>
 
       <Section title="Privacy" icon={<ShieldCheck className="h-4 w-4" />}>
@@ -152,8 +261,8 @@ export function SettingsPage() {
 
       <Section title="About">
         <p className="text-xs leading-relaxed text-zinc-500">
-          Anahad v1.0 — a zero-configuration player for open archives. No accounts, no API keys, no ads, no tracking.
-          Audio and metadata come from archive.org under each item's license. See{' '}
+          Anahad v2.0 — a zero-configuration, multi-source player for openly licensed music (Internet Archive + Openverse:
+          Jamendo, Wikimedia, Freesound). No accounts, no API keys, no ads, no tracking. See{' '}
           <a href="#/privacy" className="text-accent-soft hover:underline">
             Privacy & sources
           </a>{' '}

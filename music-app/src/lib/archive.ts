@@ -293,7 +293,10 @@ const tracksCache = new LRUCache<Track[]>(300, 20 * 60 * 1000)
 export const internetArchiveProvider: MusicProvider = {
   id: 'internet-archive',
   label: 'Internet Archive',
+  sourceLabel: 'Internet Archive',
   attribution: 'Audio and metadata served from archive.org (Internet Archive). Licenses vary per item — see each track’s details.',
+  homeUrl: 'https://archive.org',
+  enabledByDefault: true,
   capabilities: {
     searchableMetadata: true,
     artworkAvailable: true,

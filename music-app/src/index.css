@@ -88,6 +88,15 @@ input[type='range'] {
 input[type='range']::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #f59e0b var(--fill, 0%),
+    rgba(245, 158, 11, 0.28) var(--fill, 0%),
+    rgba(245, 158, 11, 0.28) var(--buffered, 0%),
+    rgba(255, 255, 255, 0.15) var(--buffered, 0%)
+  );
+}
+input[type='range']:not([data-buffered='1'])::-webkit-slider-runnable-track {
   background: linear-gradient(to right, #f59e0b var(--fill, 0%), rgba(255, 255, 255, 0.15) var(--fill, 0%));
 }
 input[type='range']::-webkit-slider-thumb {
@@ -102,7 +111,11 @@ input[type='range']::-webkit-slider-thumb {
 input[type='range']::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(
+    to right,
+    rgba(245, 158, 11, 0.28) var(--buffered, 0%),
+    rgba(255, 255, 255, 0.15) var(--buffered, 0%)
+  );
 }
 input[type='range']::-moz-range-progress {
   height: 4px;

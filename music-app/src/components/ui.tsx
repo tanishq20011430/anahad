@@ -95,3 +95,15 @@ export function ToastContainer() {
     </div>
   )
 }
+
+/** Honest per-source degradation banner (quota, outage, disabled source). */
+export function DegradedSources({ degraded }: { degraded?: { source: string; message: string }[] }) {
+  if (!degraded || degraded.length === 0) return null
+  return (
+    <ul className="space-y-1 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-300/90 ring-1 ring-amber-500/20" role="status">
+      {degraded.map((d) => (
+        <li key={d.source}>{d.message}</li>
+      ))}
+    </ul>
+  )
+}

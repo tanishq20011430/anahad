@@ -5,6 +5,7 @@ import { ChevronDown, ExternalLink, Gauge, Loader2, Pause, Play, Repeat, Repeat1
 import { useState } from 'react'
 import { usePlayer, selectCurrentTrack } from '../stores/player'
 import { formatDuration, clamp, licenseLabel } from '../lib/format'
+import { sourceChipFor } from '../lib/sourceStatus'
 import { QualityMenu } from './QualityMenu'
 import { Chip } from './ui'
 import { moodById } from '../config/catalog'
@@ -20,11 +21,12 @@ export function ExpandedPlayer({ onClose }: { onClose: () => void }) {
   const liked = useLibrary((s) => (track ? Boolean(s.likedTracks[track.id]) : false))
 
   if (!track) return null
-  const isEmbed = track.source !== 'internet-archive'
+  const isEmbed = track.source === 'youtube' || track.source === 'spotify'
   const duration = player.duration || track.durationSec || 0
   const shownTime = scrub ?? player.currentTime
   const fill = duration > 0 ? clamp((shownTime / duration) * 100, 0, 100) : 0
-  const license = licenseLabel(track.licenseUrl, track.collection)
+  const bufferedPct = duration > 0 ? clamp((player.bufferedEnd / duration) * 100, 0, 100) : 0
+  const license = licenseLabel(track.licenseUrl, track.collection) ?? track.licenseName ?? null
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-gradient-to-b from-surface-raised via-surface to-black animate-slide-up" role="dialog" aria-modal="true" aria-label={`Now playing: ${track.title}`}>
@@ -56,6 +58,7 @@ export function ExpandedPlayer({ onClose }: { onClose: () => void }) {
             {track.artist}
           </Link>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+            <Chip>{sourceChipFor(track.source, track.collection)}</Chip>
             {license ? <Chip tone="accent">{license}</Chip> : null}
             {track.year ? <Chip>{track.year}</Chip> : null}
             {track.estimatedMoods.slice(0, 2).map((m) => (
@@ -86,8 +89,13 @@ export function ExpandedPlayer({ onClose }: { onClose: () => void }) {
               setScrub(null)
             }}
             aria-label="Seek"
+            aria-valuetext={`${formatDuration(shownTime)} of ${formatDuration(duration)}`}
             disabled={isEmbed}
-            style={{ ['--fill' as string]: `${fill}%` }}
+            data-buffered={bufferedPct > fill + 0.5 ? '1' : undefined}
+            style={{
+              ['--fill' as string]: `${fill}%`,
+              ['--buffered' as string]: `${Math.max(bufferedPct, fill)}%`
+            }}
             className="w-full flex-1"
           />
           <span className="w-11 text-[11px] tabular-nums text-zinc-500">{formatDuration(duration)}</span>

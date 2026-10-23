@@ -7,8 +7,10 @@ import { Layout } from './components/Layout'
 import { Spinner } from './components/ui'
 import { useAudioEngine } from './hooks/useAudioEngine'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import { bootTheme } from './stores/settings'
+import { bootTheme, useSettings } from './stores/settings'
 import { useLibrary } from './stores/library'
+import { audioCache } from './lib/audioCache'
+import { startPreloadEngine } from './lib/preload'
 
 const HomePage = lazy(() => import('./pages/Home').then((m) => ({ default: m.HomePage })))
 const SearchPage = lazy(() => import('./pages/Search').then((m) => ({ default: m.SearchPage })))
@@ -52,6 +54,14 @@ export default function App() {
 
   useEffect(() => {
     void useLibrary.getState().init()
+    // Boot the bounded audio cache with the persisted mode + TTL sweeper.
+    audioCache.configure(useSettings.getState().cacheMode)
+    const sweep = setInterval(() => audioCache.sweep(), 60_000)
+    const stopPreload = startPreloadEngine()
+    return () => {
+      clearInterval(sweep)
+      stopPreload()
+    }
   }, [])
 
   return (

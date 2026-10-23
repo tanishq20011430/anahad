@@ -11,13 +11,24 @@
 
 import { create } from 'zustand'
 import type { AudioFormat, ExternalEmbed, RepeatMode, Track } from '../types'
-import { pickFormat, internetArchiveProvider } from '../lib/archive'
+import { pickFormat } from '../lib/archive'
+import { resolveTrackFormats } from '../lib/resolve'
+import { audioCache } from '../lib/audioCache'
+import { preload } from '../lib/preload'
 import { useSettings } from './settings'
 import { useLibrary } from './library'
 import { clamp } from '../lib/format'
 
+export interface PlaybackRequest {
+  /** Original network URL (identity for cache/preload policies). */
+  url: string
+  mimeType: string
+  /** Prebuffered leading slice (null when none) — used by the MSE pipeline. */
+  seed: Blob | null
+}
+
 export interface AudioController {
-  load(url: string): void
+  load(req: PlaybackRequest): Promise<void>
   play(): Promise<void>
   pause(): void
   seekTo(sec: number): void
@@ -37,6 +48,10 @@ interface PlayerState {
   isLoading: boolean
   isBuffering: boolean
   currentTime: number
+  /** End of the buffered range around the playhead (for seek-bar shading). */
+  bufferedEnd: number
+  /** True when the current track started from a prebuffered slice. */
+  playbackFromCache: boolean
   duration: number
   volume: number
   muted: boolean
@@ -76,8 +91,10 @@ interface PlayerState {
 
   /* engine callbacks */
   onTimeUpdate: (t: number) => void
+  onBuffered: (end: number) => void
   onDuration: (d: number) => void
   onPlaying: () => void
+  onCanPlay: () => void
   onWaiting: () => void
   onPause: () => void
   onEnded: () => Promise<void>
@@ -89,20 +106,6 @@ const canPlayType = (type: string): boolean => {
   const a = new Audio()
   // '' = unsupported; 'maybe'/'probably' = supported
   return a.canPlayType(type) !== ''
-}
-
-async function resolveTrackFormats(track: Track): Promise<Track> {
-  // Imported playlist entries carry references only — re-resolve from source.
-  if (track.formats.length === 0 && track.source === 'internet-archive') {
-    try {
-      const tracks = await internetArchiveProvider.getItemTracks(track.identifier)
-      const match = tracks.find((t) => t.fileName === track.fileName) ?? tracks.find((t) => t.id === track.id)
-      if (match) return match
-    } catch {
-      return track
-    }
-  }
-  return track
 }
 
 export const usePlayer = create<PlayerState>((set, get) => {
@@ -122,7 +125,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (get().loadToken !== token) return // stale load — a newer command superseded it
 
     // Embedded sources: render official iframe, provider controls playback.
-    if (resolved.source !== 'internet-archive') {
+    if (resolved.source === 'youtube' || resolved.source === 'spotify') {
       set({ isPlaying: false, isLoading: false })
       return
     }
@@ -152,19 +155,34 @@ export const usePlayer = create<PlayerState>((set, get) => {
       return
     }
 
-    set({ currentFormat: fmt, triedFormats: [fmt.fileName], duration: resolved.durationSec ?? 0, isLoading: true })
+    // Seed from the bounded audio cache when this exact URL was preloaded —
+    // playback then starts from RAM via the MediaSource pipeline.
+    const cacheOn = useSettings.getState().cacheMode !== 'off'
+    const seed = cacheOn && audioCache.has(fmt.url) ? audioCache.peekBlob(fmt.url) : null
+
+    set({
+      currentFormat: fmt,
+      triedFormats: [fmt.fileName],
+      duration: resolved.durationSec ?? 0,
+      isLoading: true,
+      isBuffering: false,
+      bufferedEnd: 0,
+      playbackFromCache: Boolean(seed)
+    })
     const ctrl = get().controller
     if (!ctrl) {
       set({ isLoading: false })
       return
     }
-    ctrl.load(fmt.url)
+    await ctrl.load({ url: fmt.url, mimeType: fmt.mimeType, seed })
+    if (get().loadToken !== token) return
     ctrl.setVolume(get().muted ? 0 : get().volume)
     ctrl.setSpeed(get().speed)
     try {
       await ctrl.play()
       if (get().loadToken !== token) return
       set({ isPlaying: true })
+      preload.notifyTrackChanged()
     } catch {
       // Autoplay policy or transient failure — surface honestly.
       if (get().loadToken !== token) return
@@ -179,6 +197,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const duration = state.duration || track.durationSec || 0
     const ratio = duration > 0 ? clamp(state.currentTime / duration, 0, 1) : 0
     useLibrary.getState().recordPlay(track, ratio, skipped)
+    // Session-only signal for the "Session mix" shelf (in-memory, never persisted).
+    void import('../lib/related').then((m) => m.recordSessionPlay(track))
   }
 
   function buildShuffledOrder(queueLen: number, currentIndex: number): number[] {
@@ -201,6 +221,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     isLoading: false,
     isBuffering: false,
     currentTime: 0,
+    bufferedEnd: 0,
+    playbackFromCache: false,
     duration: 0,
     volume: 0.9,
     muted: false,
@@ -401,18 +423,27 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
     reset: () => {
       get().controller?.pause()
+      preload.cancelAll()
+      audioCache.clear()
       set({ queue: [], currentIndex: 0, isPlaying: false, currentTime: 0, duration: 0, embed: null, error: null, contextLabel: null })
     },
 
     onTimeUpdate: (t) => set({ currentTime: t }),
+    onBuffered: (end) => {
+      if (Number.isFinite(end) && end >= 0) set({ bufferedEnd: end })
+    },
     onDuration: (d) => set({ duration: Number.isFinite(d) && d > 0 ? d : get().duration }),
     onPlaying: () => set({ isPlaying: true, isLoading: false, isBuffering: false, error: null }),
+    onCanPlay: () => set({ isBuffering: false }),
     onWaiting: () => set({ isBuffering: true }),
     onPause: () => set({ isPlaying: false }),
 
     onEnded: async () => {
       const s = get()
       rememberPlay(false)
+      // Cache policy: the finished track's prebuffered slice is consumed —
+      // release it now (unless repeat-one will replay it from RAM).
+      preload.onTrackEnded(s.currentFormat?.url ?? null, s.repeat === 'one')
       if (s.repeat === 'one') {
         s.controller?.seekTo(0)
         try {
@@ -435,8 +466,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
       const untried = track.formats.filter((f) => !s.triedFormats.includes(f.fileName) && (canPlayType(f.mimeType) || canPlayType(f.url)))
       if (untried.length > 0) {
         const fmt = untried[0]
-        set({ currentFormat: fmt, triedFormats: [...s.triedFormats, fmt.fileName], isLoading: true })
-        s.controller?.load(fmt.url)
+        set({ currentFormat: fmt, triedFormats: [...s.triedFormats, fmt.fileName], isLoading: true, bufferedEnd: 0 })
+        await s.controller?.load({ url: fmt.url, mimeType: fmt.mimeType, seed: null })
         try {
           await s.controller?.play()
           if (get().loadToken === token) set({ isPlaying: true })
