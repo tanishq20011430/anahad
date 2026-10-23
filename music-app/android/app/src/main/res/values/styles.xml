@@ -13,6 +13,8 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- App surface color: shows behind the status/navigation bars and while loading. -->
+        <item name="android:windowBackground">@color/app_background</item>
     </style>
 
 

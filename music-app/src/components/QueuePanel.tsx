@@ -13,7 +13,7 @@ export function QueuePanel({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <aside
-      className={`fixed inset-y-0 right-0 z-[70] flex w-full max-w-sm flex-col border-l border-white/5 bg-surface-raised/95 backdrop-blur transition-transform duration-300 lg:static lg:z-auto lg:transition-all ${
+      className={`safe-top safe-bottom fixed inset-y-0 right-0 z-[70] flex w-full max-w-sm flex-col border-l border-white/5 bg-surface-raised/95 backdrop-blur transition-transform duration-300 lg:static lg:z-auto lg:transition-all ${
         open ? 'translate-x-0' : 'pointer-events-none translate-x-full lg:hidden lg:pointer-events-auto'
       }`}
       aria-label="Playback queue"

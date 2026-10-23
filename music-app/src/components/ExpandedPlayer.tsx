@@ -30,7 +30,7 @@ export function ExpandedPlayer({ onClose }: { onClose: () => void }) {
   const license = licenseLabel(track.licenseUrl, track.collection) ?? track.licenseName ?? null
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-gradient-to-b from-surface-raised via-surface to-black animate-slide-up" role="dialog" aria-modal="true" aria-label={`Now playing: ${track.title}`}>
+    <div className="safe-bottom fixed inset-0 z-[80] flex flex-col bg-gradient-to-b from-surface-raised via-surface to-black animate-slide-up" role="dialog" aria-modal="true" aria-label={`Now playing: ${track.title}`}>
       <div className="safe-top flex items-center justify-between px-4 py-3">
         <button onClick={onClose} aria-label="Close full player" className="rounded-full p-2 text-zinc-400 hover:text-white">
           <ChevronDown className="h-6 w-6" />
