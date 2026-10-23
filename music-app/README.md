@@ -69,6 +69,15 @@ A ready workflow lives at `.github/workflows/deploy-pages.yml`:
 
 `dist/` is fully static — upload it anywhere (Netlify, Cloudflare Pages, S3, nginx). Hash routing means no server config is required.
 
+### Android app (APK)
+
+`android/` is a [Capacitor](https://capacitorjs.com) project that wraps the same web build. A small native plugin (`android/app/src/main/java/app/anahad/music/`, bridged by `src/lib/nativeMedia.ts`) runs a `mediaPlayback` foreground service, so audio keeps playing with the screen off, and adds the media notification, lock-screen and headset controls. In the app, MP3s stream through native `<audio>` instead of MSE, because the WebView throttles the MSE pump's timers in the background.
+
+- **CI:** `.github/workflows/android.yml` (at the repository root) builds a signed APK on every push to `main` that touches `music-app/`, and publishes it as `anahad.apk` on the `android-latest` release. It needs the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets (a PKCS12 keystore). Keep the same key: an APK signed with a different key cannot update an existing install.
+- **Local build** (needs JDK 21 + Android SDK, e.g. via Android Studio): `npm run build && npx cap sync android`, then `npx cap open android`, or `cd android && ./gradlew assembleDebug`.
+- **Icons/splash:** sources are in `assets/`; regenerate with `npx capacitor-assets generate --android`.
+- **Limits:** YouTube tracks play through YouTube's embedded player, which may refuse to play inside an app WebView, and YouTube's terms don't allow background playback of embeds. Audius, radio, Openverse and Mixcloud aren't affected. The APK is meant for sideloading; a YouTube-streaming app is unlikely to pass Play Store review.
+
 ## Music sources — verified 2026-10-23
 
 Every integrated source was probed live (CORS behaviour, payload shapes, real audio bytes where applicable) before being enabled, and the app displays only what each source can actually do. The in-app **Settings → Sources** page mirrors this table with live toggles, and **Privacy** documents attribution and limitations.

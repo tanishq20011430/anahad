@@ -22,6 +22,7 @@ import { usePlayer } from '../stores/player'
 import type { AudioController, PlaybackRequest } from '../stores/player'
 import { MseStream, type MseStartResult } from '../lib/mseStream'
 import { ytTransport } from '../lib/ytPlayer'
+import { bindNativeMedia, isNativeApp } from '../lib/nativeMedia'
 
 export function useAudioEngine(): void {
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -170,7 +171,9 @@ export function useAudioEngine(): void {
 
         // Prefer MSE streaming for MP3 from hosts with verified CORS+Range
         // (the preload layer tracks that per host). Everything else native.
-        if (req.mimeType === 'audio/mpeg' && MseStream.supported()) {
+        // The Android app always streams natively: the MSE pump runs on JS
+        // timers, which the WebView throttles while the screen is off.
+        if (req.mimeType === 'audio/mpeg' && MseStream.supported() && !isNativeApp) {
           const candidate = new MseStream()
           // Hard guard: MSE setup must resolve within 12s. A hung source
           // (dead host, silent proxy) falls back to native streaming instead
@@ -224,6 +227,23 @@ export function useAudioEngine(): void {
     }
     store().registerController(controller)
 
+    /* ------------------- Android app: background service + notification ------------------- */
+    const unbindNative = bindNativeMedia(
+      () => {
+        const s = store()
+        const track = s.queue[s.currentIndex]
+        if (!track) return null
+        return { title: track.title, artist: track.artist, artwork: track.artwork ?? undefined, playing: s.isPlaying }
+      },
+      (fn) => usePlayer.subscribe(fn),
+      (action) => {
+        const s = store()
+        if (action === 'next') void s.next()
+        else if (action === 'prev') void s.prev()
+        else if ((action === 'play') !== s.isPlaying) void s.togglePlay()
+      }
+    )
+
     /* ------------------------------ Media Session ------------------------------ */
     if ('mediaSession' in navigator) {
       const updateSession = () => {
@@ -247,6 +267,7 @@ export function useAudioEngine(): void {
       const unsub = usePlayer.subscribe(updateSession)
       return () => {
         unsub()
+        unbindNative()
         unsubYtFrame()
         unsubYtError()
         for (const [name, fn] of listeners()) audio.removeEventListener(name, fn)
@@ -275,6 +296,7 @@ export function useAudioEngine(): void {
     }
 
     return () => {
+      unbindNative()
       unsubYtFrame()
       unsubYtError()
       for (const [name, fn] of listeners()) audio.removeEventListener(name, fn)
