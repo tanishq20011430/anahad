@@ -20,7 +20,7 @@
 import { useEffect, useRef } from 'react'
 import { usePlayer } from '../stores/player'
 import type { AudioController, PlaybackRequest } from '../stores/player'
-import { MseStream } from '../lib/mseStream'
+import { MseStream, type MseStartResult } from '../lib/mseStream'
 import { ytTransport } from '../lib/ytPlayer'
 
 export function useAudioEngine(): void {
@@ -172,14 +172,25 @@ export function useAudioEngine(): void {
         // (the preload layer tracks that per host). Everything else native.
         if (req.mimeType === 'audio/mpeg' && MseStream.supported()) {
           const candidate = new MseStream()
-          const res = await candidate.start(audio, req.url, req.seed, (pos) => {
-            // Fatal stream error mid-playback → native fallback at position.
-            stream = null
-            void nativeLoad(req.url, pos).then(() => {
-              if (store().isPlaying) audio.play().catch(() => undefined)
-            })
+          // Hard guard: MSE setup must resolve within 12s. A hung source
+          // (dead host, silent proxy) falls back to native streaming instead
+          // of leaving the player in an eternal "Buffering" state.
+          let guardTimer: number | undefined
+          const guard = new Promise<MseStartResult>((resolve) => {
+            guardTimer = window.setTimeout(() => resolve({ streaming: false, stop: () => candidate.stop() }), 12_000)
           })
+          const res = await Promise.race([
+            candidate.start(audio, req.url, req.seed, (pos) => {
+              // Fatal stream error mid-playback → native fallback at position.
+              stream = null
+              void nativeLoad(req.url, pos).then(() => {
+                if (store().isPlaying) audio.play().catch(() => undefined)
+              })
+            }),
+            guard
+          ])
           if (res.streaming) {
+            window.clearTimeout(guardTimer) // start() won — never fire the guard
             stream = candidate
             return
           }
