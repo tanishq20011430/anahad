@@ -1,15 +1,13 @@
-/** Genre & mood discovery: card grids + detail pages driven by config data. */
+/** Genre & mood discovery: card grids + track shelves driven by config data. */
 
-import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Smile, Compass } from 'lucide-react'
 import { GENRES, MOODS, genreById, moodById } from '../config/catalog'
-import { fetchAlbumsFor } from '../lib/discover'
+import { shelfSearchOptions } from '../lib/discover'
 import { unifiedTrackSearch } from '../lib/searchService'
-import { AlbumCard, AlbumCardSkeleton } from '../components/AlbumCard'
 import { TrackRow } from '../components/TrackRow'
-import { EmptyState, ErrorState, Chip, DegradedSources } from '../components/ui'
+import { EmptyState, ErrorState, Chip, DegradedSources, Skeleton } from '../components/ui'
 
 export function GenresPage() {
   return (
@@ -18,7 +16,7 @@ export function GenresPage() {
         <Compass className="h-6 w-6 text-accent" aria-hidden />
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Genres</h1>
-          <p className="text-sm text-zinc-500">Curated shelves mapped to real archive.org collections and subjects.</p>
+          <p className="text-sm text-zinc-500">Curated shelves mapped to real catalogs: YouTube, Audius, live radio and Creative Commons.</p>
         </div>
       </header>
       <CardGrid items={GENRES.map((g) => ({ id: g.id, label: g.label, description: g.description, gradient: g.gradient, to: `/genres/${g.id}` }))} />
@@ -34,8 +32,8 @@ export function MoodsPage() {
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Moods</h1>
           <p className="text-sm text-zinc-500">
-            Mood shelves use keyword matching over real metadata. When a mood is estimated rather than tagged, tracks are
-            labeled “estimated” — we never invent tags.
+            Mood shelves use real mood tags where a source provides them (Audius), and keyword-matching elsewhere —
+            estimated moods are always labeled as such.
           </p>
         </div>
       </header>
@@ -72,31 +70,29 @@ function CardGrid({ items }: { items: CardItem[] }) {
   )
 }
 
-/** Shared shelf page for a genre or mood. */
+/** Shared track shelf page for a genre or mood. */
 export function ShelfPage({ kind }: { kind: 'genre' | 'mood' }) {
   const { id } = useParams<{ id: string }>()
-  const [page, setPage] = useState(1)
   const def = kind === 'genre' ? genreById(id) : moodById(id)
 
-  const q = useQuery({
-    queryKey: ['shelf', kind, id, page],
-    queryFn: ({ signal: _signal }) => fetchAlbumsFor({ genreId: kind === 'genre' ? id : undefined, moodId: kind === 'mood' ? id : undefined, rows: 24, page }),
-    enabled: Boolean(def)
-  })
+  const opts = def
+    ? kind === 'genre'
+      ? shelfSearchOptions({ genreId: id, rows: 24 })
+      : shelfSearchOptions({ moodId: id, rows: 24 })
+    : null
 
-  // Track-first results for shelves whose tag genuinely exists on Openverse.
-  const ovTag = kind === 'genre' ? genreById(id)?.openverseTag : moodById(id)?.openverseTag
-  const clause = kind === 'genre' ? genreById(id)?.clause : moodById(id)?.clause
   const tracks = useQuery({
-    queryKey: ['shelf-tracks', kind, id],
-    queryFn: ({ signal }) => unifiedTrackSearch({ genre: clause, tag: ovTag, rows: 12, signal }),
+    queryKey: ['shelf-tracks', kind, id, opts],
+    queryFn: ({ signal }) => unifiedTrackSearch({ ...opts!, signal }),
     staleTime: 5 * 60 * 1000,
-    enabled: Boolean(def && ovTag)
+    enabled: Boolean(def && opts)
   })
 
-  if (!def) {
+  if (!def || !opts) {
     return <EmptyState title="Category not found" hint="It may have been renamed. Browse the full list instead." />
   }
+
+  const list = tracks.data?.tracks ?? []
 
   return (
     <div className="space-y-6">
@@ -108,57 +104,38 @@ export function ShelfPage({ kind }: { kind: 'genre' | 'mood' }) {
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/85">{def.description}</p>
           {kind === 'mood' ? (
             <p className="mt-3">
-              <Chip tone="warn">Mood matching is keyword-based (estimated)</Chip>
+              <Chip tone="warn">Mood matching is partly keyword-based (estimated)</Chip>
             </p>
           ) : null}
         </div>
       </header>
 
-      {tracks.data && tracks.data.tracks.length > 0 ? (
+      {tracks.isPending ? (
+        <section aria-label="Loading shelf" className="space-y-2">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </section>
+      ) : tracks.isError ? (
+        <ErrorState message="This shelf couldn't load — a source may be busy. Try again." onRetry={() => void tracks.refetch()} />
+      ) : list.length === 0 ? (
+        <EmptyState
+          title="Nothing found on this shelf right now"
+          hint="The connected catalogs answered, but had no matches. Check another category or search directly."
+        />
+      ) : (
         <section aria-label="Tracks on this shelf" className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-zinc-100">Tracks</h2>
-            <p className="text-[11px] text-zinc-600">via Openverse — Jamendo · Wikimedia · Freesound</p>
+            <p className="text-[11px] text-zinc-600">{list.length} results across enabled sources</p>
           </div>
-          <DegradedSources degraded={tracks.data.degraded} />
+          <DegradedSources degraded={tracks.data?.degraded} />
           <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
-            {tracks.data.tracks.map((t) => (
-              <TrackRow key={t.id} track={t} contextTracks={tracks.data!.tracks} contextLabel={def.label} />
+            {list.map((t) => (
+              <TrackRow key={t.id} track={t} contextTracks={list} contextLabel={def.label} showAlbum={false} />
             ))}
           </div>
         </section>
-      ) : null}
-
-      {q.isPending ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {[...Array(10)].map((_, i) => (
-            <AlbumCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : q.isError ? (
-        <ErrorState message="This shelf couldn't load — the archive may be busy. Try again." onRetry={() => void q.refetch()} />
-      ) : q.data.albums.length === 0 ? (
-        <EmptyState title="No recordings found for this shelf right now" hint="The archive's index may be reorganizing. Check another category." />
-      ) : (
-        <>
-          <p className="text-xs text-zinc-500">{new Intl.NumberFormat().format(q.data.total)} recordings · sorted by community listening</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {q.data.albums.map((a) => (
-              <AlbumCard key={a.identifier} album={a} contextLabel={def.label} />
-            ))}
-          </div>
-          {q.data.albums.length >= 24 ? (
-            <div className="flex items-center justify-center gap-2">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="rounded-full bg-white/5 px-4 py-2 text-xs text-zinc-300 disabled:opacity-30">
-                Previous
-              </button>
-              <span className="text-xs tabular-nums text-zinc-500">Page {page}</span>
-              <button onClick={() => setPage((p) => p + 1)} className="rounded-full bg-white/5 px-4 py-2 text-xs text-zinc-300 hover:bg-white/10">
-                Next
-              </button>
-            </div>
-          ) : null}
-        </>
       )}
     </div>
   )

@@ -7,8 +7,8 @@ import type { Track } from '../src/types'
 
 function makeTrack(i: number, url: string): Track {
   return {
-    id: `internet-archive:item${i}:file${i}.mp3`,
-    source: 'internet-archive',
+    id: `openverse:item${i}`,
+    source: 'openverse',
     identifier: `item${i}`,
     fileName: `file${i}.mp3`,
     title: `Song ${i}`,
@@ -17,25 +17,27 @@ function makeTrack(i: number, url: string): Track {
     artwork: null,
     durationSec: 200,
     formats: [{ url, fileName: `file${i}.mp3`, label: 'VBR MP3', approxBitrateKbps: 200, sizeBytes: 5_000_000, isLossless: false, mimeType: 'audio/mpeg' }],
+    embed: null,
     licenseUrl: null,
     language: null,
     genres: [],
     estimatedMoods: [],
     year: null,
-    itemPage: `https://archive.org/details/item${i}`,
-    collection: null
+    itemPage: `https://openverse.org/item${i}`,
+    collection: 'jamendo'
   }
 }
 
-const CURRENT_URL = 'https://archive.org/download/item0/file0.mp3'
-const NEXT_URL = 'https://archive.org/download/item1/file1.mp3'
+const HOST = 'https://storage.example.com'
+const CURRENT_URL = `${HOST}/download/item0/file0.mp3`
+const NEXT_URL = `${HOST}/download/item1/file1.mp3`
 
 describe('preload orchestrator — next-track preloading', () => {
   beforeEach(() => {
     preload.cancelAll() // reset singleton state (lastNextKey/info) between tests
     usePlayer.getState().reset()
     usePlayer.setState({
-      queue: [makeTrack(0, CURRENT_URL), makeTrack(1, NEXT_URL), makeTrack(2, 'https://archive.org/download/item2/file2.mp3')],
+      queue: [makeTrack(0, CURRENT_URL), makeTrack(1, NEXT_URL), makeTrack(2, 'https://storage.example.com/download/item2/file2.mp3')],
       currentIndex: 0,
       currentFormat: {
         url: CURRENT_URL,
@@ -85,7 +87,7 @@ describe('preload orchestrator — next-track preloading', () => {
     // shuffled order visits index 2 next (pointer 0 → order[1] = 2)
     usePlayer.setState({ shuffledOrder: [0, 2, 1], shufflePointer: 0 })
     await preload.planNow()
-    expect(preload.getInfo().nextUrl).toBe('https://archive.org/download/item2/file2.mp3')
+    expect(preload.getInfo().nextUrl).toBe('https://storage.example.com/download/item2/file2.mp3')
   })
 
   it('skips when repeat-one loops the current track', async () => {
@@ -115,10 +117,10 @@ describe('preload orchestrator — next-track preloading', () => {
 
   it('enforces cache policy: keeps only current + next, drops stale slices', async () => {
     // Simulate a stale slice from an earlier track.
-    await audioCache.prime('https://archive.org/download/item9/stale.mp3')
-    expect(audioCache.has('https://archive.org/download/item9/stale.mp3')).toBe(true)
+    await audioCache.prime('https://storage.example.com/download/item9/stale.mp3')
+    expect(audioCache.has('https://storage.example.com/download/item9/stale.mp3')).toBe(true)
     await preload.planNow()
-    expect(audioCache.has('https://archive.org/download/item9/stale.mp3')).toBe(false)
+    expect(audioCache.has('https://storage.example.com/download/item9/stale.mp3')).toBe(false)
     expect(audioCache.has(CURRENT_URL) || audioCache.has(NEXT_URL)).toBe(true)
   })
 

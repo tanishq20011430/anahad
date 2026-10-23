@@ -5,10 +5,16 @@
  * 1. Metadata phase — resolves the upcoming track's playable formats early
  *    (cheap JSON, cached by the providers) as soon as a track starts, and at
  *    ~60% of the current track as a re-check.
- * 2. Audio phase — when the cache is enabled and the host supports Range +
- *    CORS (verified per-host, never assumed), fetches a small leading slice
- *    (default 256 KB) of the chosen next format into the in-memory
- *    AudioBlobCache. Playback then starts from RAM and streams the rest.
+ * 2. Audio phase — per transport:
+ *    - YouTube: cues the next video in a second hidden official player
+ *      (cueVideoById) so YouTube begins buffering it early; at advance time
+ *      that player is promoted for an instant continue.
+ *    - Direct-audio sources with verified CORS+Range (Audius, Openverse/
+ *      Jamendo): fetches a small leading slice (256 KB) of the chosen next
+ *      format into the bounded in-memory AudioBlobCache; playback then
+ *      starts from RAM and streams the rest.
+ *    - Live radio: streams directly; nothing to prebuffer, reported honestly.
+ *    - Mixcloud: official widget transport — metadata only.
  *
  * Cancellation policy: every queue/index/shuffle/quality change aborts the
  * in-flight prebuffer and re-plans; the finished track's slice is released
@@ -21,7 +27,8 @@ import { usePlayer } from '../stores/player'
 import { useSettings } from '../stores/settings'
 import { audioCache } from './audioCache'
 import { resolveTrackFormats } from './resolve'
-import { pickFormat } from './archive'
+import { pickFormat } from './quality'
+import { ytTransport } from './ytPlayer'
 
 const PRIME_BYTES = 256 * 1024
 const PROGRESS_TRIGGER = 0.6
@@ -72,13 +79,18 @@ class PreloadOrchestrator {
   plan(immediate = false): void {
     if (this.timer) clearTimeout(this.timer)
     if (immediate) {
-      void this.execute()
+      void this.execute().catch((err) => this.reportExecuteError(err))
       return
     }
     this.timer = setTimeout(() => {
       this.timer = null
-      void this.execute()
+      void this.execute().catch((err) => this.reportExecuteError(err))
     }, DEBOUNCE_MS)
+  }
+
+  private reportExecuteError(err: unknown): void {
+    const message = err instanceof Error ? err.message : 'unknown preload error'
+    this.setInfo({ nextTrackId: null, nextUrl: null, state: 'skipped', reason: `Preload error: ${message}` })
   }
 
   /** Awaiting variant used by diagnostics/tests — runs one full plan now. */
@@ -108,6 +120,7 @@ class PreloadOrchestrator {
 
     const nextKey = `${next.id}:${settings.quality}`
     if (!settings.preloadEnabled) {
+      ytTransport.releaseCue()
       this.setInfo({ nextTrackId: next.id, nextUrl: null, state: 'skipped', reason: 'Preloading disabled in Settings' })
       this.lastNextKey = nextKey
       return
@@ -118,6 +131,31 @@ class PreloadOrchestrator {
       const resolved = await resolveTrackFormats(next)
       if (gen !== this.generation) return // superseded
       this.lastNextKey = nextKey
+
+      // YouTube transport: cue the next video in the hidden spare player.
+      if (resolved.source === 'youtube' && resolved.embed?.kind === 'youtube') {
+        const ok = await ytTransport.cue(resolved.embed.id)
+        if (gen !== this.generation) return
+        this.setInfo(
+          ok
+            ? { nextTrackId: next.id, nextUrl: null, state: 'primed' }
+            : { nextTrackId: next.id, nextUrl: null, state: 'skipped', reason: 'YouTube cue player unavailable' }
+        )
+        return
+      }
+      // Mixcloud: official widget transport — metadata prefetch only.
+      if (resolved.source === 'mixcloud') {
+        ytTransport.releaseCue()
+        this.setInfo({ nextTrackId: next.id, nextUrl: null, state: 'skipped', reason: 'Plays via the official Mixcloud widget' })
+        return
+      }
+      // Live radio streams directly — nothing to prebuffer, honestly reported.
+      if (resolved.source === 'radio' && resolved.isLive) {
+        ytTransport.releaseCue()
+        this.setInfo({ nextTrackId: next.id, nextUrl: null, state: 'skipped', reason: 'Live stream — starts directly' })
+        return
+      }
+
       if (resolved.formats.length === 0) {
         this.setInfo({ nextTrackId: next.id, nextUrl: null, state: 'skipped', reason: 'Next track has no playable audio' })
         return
@@ -200,6 +238,7 @@ class PreloadOrchestrator {
       this.timer = null
     }
     audioCache.cancelAll()
+    ytTransport.releaseCue()
     this.lastNextKey = null
     this.setInfo({ nextTrackId: null, nextUrl: null, state: 'idle' })
   }
@@ -218,7 +257,19 @@ export const preload = new PreloadOrchestrator()
 if (typeof window !== 'undefined') {
   ;(window as unknown as Record<string, unknown>).__anahadEngine = {
     cacheStats: () => audioCache.stats(),
-    preloadInfo: () => preload.getInfo()
+    preloadInfo: () => preload.getInfo(),
+    yt: () => ytTransport.stats(),
+    player: () => {
+      const s = usePlayer.getState()
+      return {
+        queueLen: s.queue.length,
+        currentIndex: s.currentIndex,
+        repeat: s.repeat,
+        shuffled: Boolean(s.shuffledOrder),
+        next: s.queue[s.currentIndex + 1]?.id ?? null,
+        currentId: s.queue[s.currentIndex]?.id ?? null
+      }
+    }
   }
 }
 

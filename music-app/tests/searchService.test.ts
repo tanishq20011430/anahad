@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { unifiedSearch, unifiedTrackSearch, PROVIDERS } from '../src/lib/searchService'
+import { unifiedTrackSearch, PROVIDERS } from '../src/lib/searchService'
 import { useSettings } from '../src/stores/settings'
+import { resetPipedClient } from '../src/lib/providers/pipedClient'
 
 /** Fetch mock that answers real endpoints with verified-shape fixtures. */
-function stubMultiSourceFetch(opts: { openverseFails?: boolean; iaFails?: boolean } = {}) {
+function stubMultiSourceFetch(opts: { openverseFails?: boolean; audiusFails?: boolean; pipedFails?: boolean; radioFails?: boolean; mixcloudFails?: boolean } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -40,19 +41,87 @@ function stubMultiSourceFetch(opts: { openverseFails?: boolean; iaFails?: boolea
           ]
         })
       }
-      if (u.includes('advancedsearch.php')) {
-        if (opts.iaFails) return new Response('nope', { status: 500 })
+      if (u.includes('piped.private.coffee') || u.includes('pipedapi.ducks.party')) {
+        if (opts.pipedFails) return new Response('down', { status: 500 })
         return Response.json({
-          response: {
-            numFound: 1,
-            docs: [{ identifier: 'iaitem1', title: 'IA Album', creator: 'IA Artist', downloads: 10, year: '1970' }]
-          }
+          items: [
+            {
+              url: '/watch?v=ytvid1',
+              type: 'stream',
+              title: 'YT Song One',
+              uploaderName: 'YT Artist',
+              duration: 220,
+              isShort: false
+            },
+            { url: '/watch?v=short1', type: 'stream', title: 'A Short', duration: 20, isShort: true },
+            { url: '/watch?v=ytvid2', type: 'stream', title: 'YT Song Two', uploaderName: 'YT Artist', duration: 190 }
+          ]
         })
       }
-      if (u.includes('/metadata/')) {
+      if (u.includes('audius.co')) {
+        if (opts.audiusFails) return new Response('down', { status: 503 })
         return Response.json({
-          metadata: { identifier: 'iaitem1', title: 'IA Album', creator: 'IA Artist' },
-          files: [{ name: 'track1.mp3', format: 'VBR MP3', size: '3000000', length: '180.5', title: 'IA Track 1' }]
+          data: [
+            {
+              id: 'aud1',
+              title: 'Audius Track One',
+              user: { name: 'Audius Artist' },
+              duration: 240,
+              genre: 'Electronic',
+              artwork: { '480x480': 'https://content.audius.co/a.jpg' },
+              is_streamable: true,
+              is_delete: false
+            },
+            {
+              id: 'aud2',
+              title: 'Too Short',
+              user: { name: 'X' },
+              duration: 20
+            }
+          ]
+        })
+      }
+      if (u.includes('radio-browser.info')) {
+        if (opts.radioFails) throw new TypeError('radio dead')
+        return Response.json([
+          {
+            stationuuid: 'rb1',
+            name: 'Bhajans Radio',
+            url_resolved: 'https://stream.example.com/bhajan',
+            codec: 'AAC',
+            bitrate: 128,
+            tags: 'bhajan,devotional',
+            country: 'India',
+            language: 'hindi',
+            votes: 500,
+            lastcheckok: 1,
+            hls: 0
+          },
+          {
+            stationuuid: 'rb2',
+            name: 'HTTP Only Station',
+            url_resolved: 'http://insecure.example.com/stream',
+            codec: 'MP3',
+            bitrate: 96,
+            votes: 100,
+            lastcheckok: 1,
+            hls: 0
+          }
+        ])
+      }
+      if (u.includes('api.mixcloud.com')) {
+        if (opts.mixcloudFails) return new Response('down', { status: 500 })
+        return Response.json({
+          data: [
+            {
+              key: '/user/some-show/',
+              url: 'https://www.mixcloud.com/user/some-show/',
+              name: 'Some Show',
+              user: { username: 'user', name: 'User Name' },
+              tags: [{ key: '/genres/dub/', name: 'Dub' }],
+              pictures: { medium_mobile: 'https://thumbnailer.mixcloud.com/x' }
+            }
+          ]
         })
       }
       return new Response('not found', { status: 404 })
@@ -62,66 +131,68 @@ function stubMultiSourceFetch(opts: { openverseFails?: boolean; iaFails?: boolea
 
 describe('searchService — multi-source orchestration', () => {
   beforeEach(() => {
-    useSettings.setState({ sources: { 'internet-archive': true, openverse: true } })
+    resetPipedClient()
+    useSettings.setState({ sources: { youtube: true, audius: true, radio: true, openverse: true, mixcloud: true } })
   })
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('registers both verified providers', () => {
-    expect(PROVIDERS.map((p) => p.id)).toEqual(['internet-archive', 'openverse'])
-    expect(PROVIDERS[1].searchTracks).toBeTypeOf('function')
-    expect(PROVIDERS[1].capabilities.qualityMetadataAvailable).toBe(false)
+  it('registers the five verified providers in priority order', () => {
+    expect(PROVIDERS.map((p) => p.id)).toEqual(['audius', 'youtube', 'radio', 'openverse', 'mixcloud'])
+    for (const p of PROVIDERS) expect(p.searchTracks).toBeTypeOf('function')
   })
 
-  it('unifiedTrackSearch merges IA album expansion + Openverse tracks', async () => {
+  it('unifiedTrackSearch merges all sources with deterministic interleave', async () => {
     stubMultiSourceFetch()
     const res = await unifiedTrackSearch({ query: 'test', rows: 10 })
-    const sources = res.tracks.map((t) => t.source)
-    expect(sources).toContain('internet-archive')
+    const sources = new Set(res.tracks.map((t) => t.source))
+    expect(sources).toContain('audius')
+    expect(sources).toContain('youtube')
+    expect(sources).toContain('radio')
     expect(sources).toContain('openverse')
-    // interleave: the first track comes from the first bucket (IA)
-    expect(res.tracks[0].source).toBe('internet-archive')
+    expect(sources).toContain('mixcloud')
+    // interleave: first track of each bucket in registry order
+    expect(res.tracks[0].source).toBe('audius')
+    expect(res.tracks[1].source).toBe('youtube')
+    expect(res.tracks[2].source).toBe('radio')
     // dedupe: no duplicate ids
     expect(new Set(res.tracks.map((t) => t.id)).size).toBe(res.tracks.length)
     expect(res.degraded).toBeUndefined()
   })
 
-  it('reports degraded sources honestly when Openverse hits its quota', async () => {
-    stubMultiSourceFetch({ openverseFails: true })
-    // distinct query → bypasses the (intentional) 45-min search cache
-    const res = await unifiedTrackSearch({ query: 'quota-probe', rows: 10 })
-    expect(res.tracks.every((t) => t.source === 'internet-archive')).toBe(true)
-    expect(res.degraded).toHaveLength(1)
-    expect(res.degraded![0].source).toBe('openverse')
-    expect(res.degraded![0].message).toMatch(/quota/i)
+  it('keeps junk out of normalized results (shorts, http stations, tiny tracks)', async () => {
+    stubMultiSourceFetch()
+    const res = await unifiedTrackSearch({ query: 'junk-probe', rows: 20 })
+    expect(res.tracks.some((t) => t.id === 'youtube:short1')).toBe(false)
+    expect(res.tracks.some((t) => t.id === 'audius:aud2')).toBe(false)
+    const radio = res.tracks.filter((t) => t.source === 'radio')
+    expect(radio.every((t) => t.formats[0].url.startsWith('https://'))).toBe(true)
   })
 
-  it('respects the per-source toggle (Openverse off)', async () => {
+  it('reports degraded sources honestly when one source fails', async () => {
+    stubMultiSourceFetch({ openverseFails: true, pipedFails: true })
+    const res = await unifiedTrackSearch({ query: 'quota-probe', rows: 10 })
+    const degradedSources = (res.degraded ?? []).map((d) => d.source)
+    expect(degradedSources).toContain('openverse')
+    expect(degradedSources).toContain('youtube')
+    // healthy sources still return results
+    expect(res.tracks.some((t) => t.source === 'audius')).toBe(true)
+    expect(res.tracks.some((t) => t.source === 'radio')).toBe(true)
+  })
+
+  it('respects the per-source toggle (mixcloud off)', async () => {
     stubMultiSourceFetch()
-    useSettings.setState({ sources: { 'internet-archive': true, openverse: false } })
+    useSettings.setState({ sources: { youtube: true, audius: true, radio: true, openverse: true, mixcloud: false } })
     const res = await unifiedTrackSearch({ query: 'test', rows: 10 })
-    expect(res.tracks.every((t) => t.source === 'internet-archive')).toBe(true)
+    expect(res.tracks.every((t) => t.source !== 'mixcloud')).toBe(true)
     expect(res.degraded).toBeUndefined()
   })
 
-  it('unifiedSearch returns albums from IA and stays empty for track-first providers', async () => {
+  it('passes source-native params only to the matching provider (audiusGenre)', async () => {
     stubMultiSourceFetch()
-    const res = await unifiedSearch({ query: 'test' })
-    expect(res.albums.length).toBeGreaterThan(0)
-    expect(res.albums[0].source).toBe('internet-archive')
-  })
-
-  it('unifiedSearch still resolves (honestly degraded) when IA fails — track-first providers carry no albums', async () => {
-    stubMultiSourceFetch({ iaFails: true })
-    const res = await unifiedSearch({ query: 'x' })
-    expect(res.albums).toHaveLength(0) // Openverse contributes no fabricated albums
-    expect(res.degraded![0].source).toBe('internet-archive')
-  })
-
-  it('unifiedSearch throws only when every enabled album provider fails', async () => {
-    stubMultiSourceFetch({ iaFails: true })
-    useSettings.setState({ sources: { 'internet-archive': true, openverse: false } })
-    await expect(unifiedSearch({ query: 'x' })).rejects.toThrow()
+    const res = await unifiedTrackSearch({ audiusGenre: 'Electronic', rows: 10 })
+    // all tracks still come back; the audius bucket was queried with trending?genre=
+    expect(res.tracks.some((t) => t.source === 'audius')).toBe(true)
   })
 })

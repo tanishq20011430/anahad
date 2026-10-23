@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { buildProfile, scoreTrack, getRecommendations, describeTaste, WEIGHTS } from '../src/lib/recommend'
-import { inferMoods, MOODS, GENRES, LANGUAGES, normalizeLanguageCode } from '../src/config/catalog'
+import { inferMoods, MOODS, GENRES, LANGUAGES } from '../src/config/catalog'
 import type { PlayEvent, Track } from '../src/types'
 
 const DAY = 86_400_000
 
 function makeTrack(overrides: Partial<Track> = {}): Track {
   return {
-    id: 'internet-archive:item1:file1.mp3',
-    source: 'internet-archive',
+    id: 'audius:item1',
+    source: 'audius',
     identifier: 'item1',
     fileName: 'file1.mp3',
     title: 'Test Song',
@@ -17,12 +17,13 @@ function makeTrack(overrides: Partial<Track> = {}): Track {
     artwork: null,
     durationSec: 180,
     formats: [{ url: 'https://x/f.mp3', fileName: 'f.mp3', label: 'VBR MP3', approxBitrateKbps: 192, sizeBytes: 1000, isLossless: false, mimeType: 'audio/mpeg' }],
+    embed: null,
     licenseUrl: null,
     language: 'hindi',
     genres: ['bhajan'],
     estimatedMoods: ['devotional'],
     year: 1970,
-    itemPage: 'https://archive.org/details/item1',
+    itemPage: 'https://audius.co/item1',
     collection: 'netlabels',
     ...overrides
   }
@@ -173,10 +174,15 @@ describe('describeTaste', () => {
 })
 
 describe('catalog config sanity', () => {
-  it('has the user-required genres', () => {
+  it('has the multi-source genre set (each mapped to real source params)', () => {
     const ids = GENRES.map((g) => g.id)
-    for (const required of ['bollywood', 'hindi-indie', 'indian-classical', 'hindustani-classical', 'carnatic', 'bhajans', 'devotional', 'ghazals', 'sufi', 'punjabi', 'folk', 'pop', 'rock', 'hip-hop', 'electronic', 'jazz', 'blues', 'classical', 'lo-fi', 'ambient', 'instrumental', 'acoustic', 'regional-indian']) {
+    for (const required of ['bollywood', 'bhajans', 'devotional', 'indian-classical', 'sufi', 'punjabi', 'lo-fi', 'electronic', 'hip-hop', 'rock', 'pop', 'jazz', 'classical', 'ambient', 'folk', 'acoustic', 'rnb', 'reggae']) {
       expect(ids).toContain(required)
+    }
+    // Every genre must map to at least one real source-native parameter.
+    for (const g of GENRES) {
+      const hasSource = Boolean(g.ytQuery || g.openverseTag || g.audiusGenre || g.radioTag || g.radioName)
+      expect(hasSource).toBe(true)
     }
   })
   it('has the user-required moods', () => {
@@ -191,9 +197,9 @@ describe('catalog config sanity', () => {
       expect(ids).toContain(required)
     }
   })
-  it('normalizes archive.org language codes', () => {
-    expect(normalizeLanguageCode('hin')).toBe('hindi')
-    expect(normalizeLanguageCode('pan')).toBe('punjabi')
-    expect(normalizeLanguageCode('zzz')).toBeNull()
+  it('maps languages to real source-native params (radio + youtube)', () => {
+    const hindi = LANGUAGES.find((l) => l.id === 'hindi')!
+    expect(hindi.radioLanguage).toBe('hindi')
+    expect(hindi.ytQuery).toContain('hindi')
   })
 })

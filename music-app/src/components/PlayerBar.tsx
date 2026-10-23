@@ -39,8 +39,11 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
 
   if (!track) return null
 
-  const isEmbed = track.source === 'youtube' || track.source === 'spotify'
+  // Provider-controlled embeds (Mixcloud widget) can't be seeked or played by us.
+  const isProviderControlled = Boolean(player.embed)
+  const isLive = Boolean(track.isLive)
   const duration = player.duration || track.durationSec || 0
+  const seekDisabled = isProviderControlled || isLive || duration <= 0
   const shownTime = scrub ?? player.currentTime
   const fill = duration > 0 ? clamp((shownTime / duration) * 100, 0, 100) : 0
   const bufferedPct = duration > 0 ? clamp((player.bufferedEnd / duration) * 100, 0, 100) : 0
@@ -60,8 +63,7 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
       <button
         onClick={() => void player.prev()}
         aria-label="Previous track"
-        disabled={isEmbed}
-        className="rounded-full p-2 text-zinc-300 transition hover:text-white disabled:opacity-30"
+        className="rounded-full p-2 text-zinc-300 transition hover:text-white"
       >
         <SkipBack className="h-5 w-5 fill-current" />
       </button>
@@ -72,7 +74,7 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
       >
         {player.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : player.isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 translate-x-px fill-current" />}
       </button>
-      <button onClick={() => void player.next()} aria-label="Next track" disabled={isEmbed} className="rounded-full p-2 text-zinc-300 transition hover:text-white disabled:opacity-30">
+      <button onClick={() => void player.next()} aria-label="Next track" className="rounded-full p-2 text-zinc-300 transition hover:text-white">
         <SkipForward className="h-5 w-5 fill-current" />
       </button>
       <button
@@ -109,10 +111,13 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
             <button onClick={() => void player.togglePlay()} aria-label={player.isPlaying ? 'Pause' : 'Play'} className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white text-black">
               {player.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : player.isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 translate-x-px fill-current" />}
             </button>
-            <button onClick={() => void player.next()} aria-label="Next track" disabled={isEmbed} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-zinc-300 disabled:opacity-30">
+            <button onClick={() => void player.next()} aria-label="Next track" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-zinc-300">
               <SkipForward className="h-4 w-4 fill-current" />
             </button>
           </div>
+          {track.isLive ? (
+            <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-red-400">● Live — no seeking</p>
+          ) : null}
           {player.error ? <p className="px-3 pb-2 text-[10px] text-amber-400">{player.error}</p> : null}
         </div>
       </div>
@@ -139,14 +144,13 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
               <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-zinc-800" />
             )}
             <div className="min-w-0">
-              <Link to={`/track/${encodeURIComponent(track.identifier)}/${encodeURIComponent(track.fileName)}`} className="block truncate text-sm font-semibold text-zinc-100 hover:underline">
+              <Link to={`/track/${track.source}/${encodeURIComponent(track.identifier)}`} className="block truncate text-sm font-semibold text-zinc-100 hover:underline">
                 {track.title}
               </Link>
-              <Link to={`/artist/${encodeURIComponent(track.artist)}`} className="block truncate text-xs text-zinc-500 hover:text-zinc-300 hover:underline">
-                {track.artist}
-              </Link>
+              <span className="block truncate text-xs text-zinc-500">{track.artist}</span>
               <p className="truncate text-[10px] text-zinc-600">
                 {sourceChipFor(track.source, track.collection)}
+                {track.isLive ? ' · live' : ''}
                 {player.contextLabel ? ` · from ${player.contextLabel}` : ''}
               </p>
             </div>
@@ -157,7 +161,7 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
           <div className="flex flex-col items-center gap-1">
             {transport}
             <div className="flex w-full items-center gap-2">
-              <span className="w-10 text-right text-[10px] tabular-nums text-zinc-500">{formatDuration(shownTime)}</span>
+              <span className="w-10 text-right text-[10px] tabular-nums text-zinc-500">{isLive ? 'LIVE' : formatDuration(shownTime)}</span>
               <div className="relative flex-1">
                 <input
                   type="range"
@@ -176,7 +180,7 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
                   }}
                   aria-label="Seek"
                   aria-valuetext={`${formatDuration(shownTime)} of ${formatDuration(duration)}`}
-                  disabled={isEmbed}
+                  disabled={seekDisabled}
                   data-buffered={bufferedPct > fill + 0.5 ? '1' : undefined}
                   style={{
                     ['--fill' as string]: `${fill}%`,
@@ -190,7 +194,7 @@ export function PlayerBar({ onToggleQueue, queueOpen }: { onToggleQueue: () => v
                   </span>
                 ) : null}
               </div>
-              <span className="w-10 text-[10px] tabular-nums text-zinc-500">{formatDuration(duration)}</span>
+              <span className="w-10 text-[10px] tabular-nums text-zinc-500">{isLive ? '●' : formatDuration(duration)}</span>
               <span className="sr-only" role="status">
                 {showBufferSpinner ? 'Buffering' : player.playbackFromCache ? 'Playing from preloaded audio' : ''}
               </span>

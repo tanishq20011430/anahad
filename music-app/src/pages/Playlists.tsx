@@ -6,7 +6,7 @@ import { ListMusic, Pencil, Play, Plus, Trash2, Upload, Download } from 'lucide-
 import { useLibrary } from '../stores/library'
 import { EmptyState, toast } from '../components/ui'
 import { usePlayer } from '../stores/player'
-import { internetArchiveProvider } from '../lib/archive'
+import { resolveTrackFormats } from '../lib/resolve'
 
 export function PlaylistsPage() {
   const playlists = useLibrary((s) => s.playlists)
@@ -36,7 +36,7 @@ export function PlaylistsPage() {
     if (!p || p.tracks.length === 0) return
     // Re-resolve formats for imported/reference tracks before playing.
     const resolved = await Promise.all(
-      p.tracks.map(async (t) => (t.formats.length === 0 ? await resolveSilently(t) : t))
+      p.tracks.map(async (t) => (t.formats.length === 0 && !t.embed ? await resolveTrackFormats(t) : t))
     )
     void usePlayer.getState().playTracks(resolved, 0, p.name)
   }
@@ -47,7 +47,7 @@ export function PlaylistsPage() {
         <h1 className="text-2xl font-extrabold tracking-tight">Playlists</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Stored in this browser only (IndexedDB). Export to move them elsewhere — importing brings back track references
-          that re-resolve from the archive.
+          that re-resolve from their source (YouTube, Audius, radio, Openverse, Mixcloud).
         </p>
       </header>
 
@@ -149,15 +149,6 @@ export function PlaylistsPage() {
       )}
     </div>
   )
-}
-
-async function resolveSilently(t: import('../types').Track) {
-  try {
-    const tracks = await internetArchiveProvider.getItemTracks(t.identifier)
-    return tracks.find((x) => x.fileName === t.fileName) ?? t
-  } catch {
-    return t
-  }
 }
 
 function IconBtn({ label, onClick, danger, disabled, children }: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {

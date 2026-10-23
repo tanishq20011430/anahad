@@ -5,20 +5,11 @@
  */
 
 import { create } from 'zustand'
-import type { AlbumResult, PlayEvent, Playlist, Track } from '../types'
+import type { PlayEvent, Playlist, SourceId, Track } from '../types'
 import { idbDelete, idbGet, idbPut, wipeLocalData } from '../lib/db'
 import { useSettings } from './settings'
 
 const HISTORY_CAP = 500
-
-export interface SavedAlbum {
-  identifier: string
-  title: string
-  creator: string
-  artwork: string
-  itemPage: string
-  source: string
-}
 
 export interface FavoriteArtist {
   name: string
@@ -29,7 +20,6 @@ export interface LibraryState {
   loaded: boolean
   playlists: Playlist[]
   likedTracks: Record<string, Track>
-  savedAlbums: Record<string, SavedAlbum>
   favoriteArtists: Record<string, FavoriteArtist>
   history: PlayEvent[]
 
@@ -44,11 +34,6 @@ export interface LibraryState {
 
   toggleLike: (track: Track) => void
   isLiked: (trackId: string) => boolean
-  toggleSaveAlbum: (
-    album: Pick<AlbumResult, 'identifier' | 'title' | 'creator' | 'artwork' | 'itemPage' | 'source'> &
-      Partial<Pick<AlbumResult, 'year' | 'downloads' | 'subjects' | 'language' | 'licenseUrl'>>
-  ) => void
-  isAlbumSaved: (identifier: string) => boolean
   toggleFavoriteArtist: (name: string, artwork?: string | null) => void
   isArtistFavorite: (name: string) => boolean
 
@@ -72,17 +57,15 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   loaded: false,
   playlists: [],
   likedTracks: {},
-  savedAlbums: {},
   favoriteArtists: {},
   history: [],
 
   init: async () => {
     if (get().loaded) return
     try {
-      const [playlists, likes, albums, artists, history] = await Promise.all([
+      const [playlists, likes, artists, history] = await Promise.all([
         idbGetAllPlaylists(),
         idbGet<Record<string, Track>>('kv', 'likes-all'),
-        idbGet<Record<string, SavedAlbum>>('kv', 'albums-all'),
         idbGet<Record<string, FavoriteArtist>>('kv', 'artists-all'),
         idbGet<PlayEvent[]>('kv', 'history')
       ])
@@ -90,7 +73,6 @@ export const useLibrary = create<LibraryState>((set, get) => ({
         loaded: true,
         playlists,
         likedTracks: likes ?? {},
-        savedAlbums: albums ?? {},
         favoriteArtists: artists ?? {},
         history: history ?? []
       })
@@ -193,25 +175,6 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
   isLiked: (trackId) => Boolean(get().likedTracks[trackId]),
 
-  toggleSaveAlbum: (album) => {
-    set((s) => {
-      const savedAlbums = { ...s.savedAlbums }
-      if (savedAlbums[album.identifier]) delete savedAlbums[album.identifier]
-      else
-        savedAlbums[album.identifier] = {
-          identifier: album.identifier,
-          title: album.title,
-          creator: album.creator,
-          artwork: album.artwork,
-          itemPage: album.itemPage,
-          source: album.source
-        }
-      void idbPut('kv', savedAlbums, 'albums-all').catch(() => undefined)
-      return { savedAlbums }
-    })
-  },
-  isAlbumSaved: (identifier) => Boolean(get().savedAlbums[identifier]),
-
   toggleFavoriteArtist: (name, artwork) => {
     set((s) => {
       const favoriteArtists = { ...s.favoriteArtists }
@@ -247,7 +210,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
   clearAllData: async () => {
     await wipeLocalData()
-    set({ playlists: [], likedTracks: {}, savedAlbums: {}, favoriteArtists: {}, history: [] })
+    set({ playlists: [], likedTracks: {}, favoriteArtists: {}, history: [] })
   },
 
   exportPlaylist: (id) => {
@@ -292,28 +255,31 @@ export const useLibrary = create<LibraryState>((set, get) => ({
         updatedAt: Date.now()
       }
       let imported = 0
+      const KNOWN_SOURCES: SourceId[] = ['youtube', 'audius', 'radio', 'openverse', 'mixcloud']
       for (const raw of data.tracks) {
         const t = raw as Partial<Track>
-        if (t && t.identifier && t.fileName && t.title) {
+        const source = KNOWN_SOURCES.includes(t?.source as SourceId) ? (t!.source as SourceId) : null
+        if (t && t.identifier && t.title && source) {
           // Imported entries carry references only — playable formats are
           // re-resolved from the source when the track is played.
           const track: Track = {
-            id: `internet-archive:${t.identifier}:${t.fileName}`,
-            source: 'internet-archive',
+            id: `${source}:${t.identifier}`,
+            source,
             identifier: t.identifier,
-            fileName: t.fileName,
+            fileName: t.fileName ?? '',
             title: t.title,
             artist: t.artist ?? 'Unknown artist',
-            album: t.album ?? t.title,
-            artwork: t.artwork ?? `https://archive.org/services/img/${encodeURIComponent(t.identifier)}`,
+            album: t.album ?? '',
+            artwork: t.artwork ?? null,
             durationSec: t.durationSec ?? null,
             formats: [],
+            embed: source === 'youtube' ? { kind: 'youtube', id: t.identifier } : source === 'mixcloud' ? { kind: 'mixcloud', id: t.identifier } : null,
             licenseUrl: t.licenseUrl ?? null,
             language: t.language ?? null,
             genres: t.genres ?? [],
             estimatedMoods: [],
             year: t.year ?? null,
-            itemPage: t.itemPage ?? `https://archive.org/details/${t.identifier}`,
+            itemPage: t.itemPage ?? '',
             collection: t.collection ?? null
           }
           p.trackIds.push(track.id)
@@ -321,7 +287,8 @@ export const useLibrary = create<LibraryState>((set, get) => ({
           imported++
         }
       }
-      if (imported === 0) return { ok: false, message: 'No importable tracks found' }
+      if (imported === 0)
+        return { ok: false, message: 'No importable tracks found — exports from app v2 (Internet Archive) are no longer supported' }
       set((s) => ({ playlists: [p, ...s.playlists] }))
       void persistPlaylist(p)
       return { ok: true, message: `Imported ${imported} track${imported === 1 ? '' : 's'} into “${p.name}”` }

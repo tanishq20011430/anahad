@@ -7,6 +7,8 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { CacheMode, QualityPreference, SourceId } from '../types'
 
+export type SearchSourceId = Exclude<SourceId, 'spotify'>
+
 export interface SettingsState {
   theme: 'dark' | 'light'
   quality: QualityPreference
@@ -17,14 +19,14 @@ export interface SettingsState {
   /** Bounded in-memory audio cache mode — never persisted to disk. */
   cacheMode: CacheMode
   /** Per-source participation in search/discovery. */
-  sources: Record<'internet-archive' | 'openverse', boolean>
+  sources: Record<SearchSourceId, boolean>
   setTheme: (t: 'dark' | 'light') => void
   setQuality: (q: QualityPreference) => void
   setHistoryEnabled: (v: boolean) => void
   setAutoplayNext: (v: boolean) => void
   setPreloadEnabled: (v: boolean) => void
   setCacheMode: (m: CacheMode) => void
-  setSourceEnabled: (id: 'internet-archive' | 'openverse', v: boolean) => void
+  setSourceEnabled: (id: SearchSourceId, v: boolean) => void
 }
 
 function applyTheme(theme: 'dark' | 'light') {
@@ -43,7 +45,7 @@ export const useSettings = create<SettingsState>()(
       autoplayNext: true,
       preloadEnabled: true,
       cacheMode: 'standard',
-      sources: { 'internet-archive': true, openverse: true },
+      sources: { youtube: true, audius: true, radio: true, openverse: true, mixcloud: true },
       setTheme: (t) => {
         applyTheme(t)
         set({ theme: t })
@@ -87,8 +89,6 @@ export function useQuality(): QualityPreference {
 
 export function isSourceEnabled(id: SourceId): boolean {
   const s = useSettings.getState()
-  if (id === 'internet-archive') return s.sources['internet-archive']
-  if (id === 'openverse') return s.sources.openverse
-  // Embed-only sources are always "available" (they render official iframes).
-  return true
+  if (id === 'spotify') return true // paste-link embeds are always available
+  return s.sources[id] ?? true
 }

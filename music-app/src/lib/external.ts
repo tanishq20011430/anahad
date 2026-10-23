@@ -50,6 +50,16 @@ export function parseExternalUrl(raw: string): ExternalEmbed | null {
     return null
   }
 
+  // Mixcloud — official widget embed player
+  if (host === 'mixcloud.com') {
+    const m = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/?$/)
+    if (m) {
+      const key = `/${m[1]}/${m[2]}/`
+      return { source: 'mixcloud', embedId: key, originalUrl: `https://www.mixcloud.com${key}`, title: 'Mixcloud show' }
+    }
+    return null
+  }
+
   return null
 }
 
@@ -59,11 +69,18 @@ export function embedSrc(embed: ExternalEmbed, autoplay: boolean): string {
     if (autoplay) params.set('autoplay', '1')
     return `https://www.youtube-nocookie.com/embed/${embed.embedId}?${params.toString()}`
   }
+  if (embed.source === 'mixcloud') {
+    const params = new URLSearchParams({ feed: embed.embedId, light: 'false', hide_cover: '0' })
+    if (autoplay) params.set('autoplay', '1')
+    return `https://player-widget.mixcloud.com/widget/iframe/?${params.toString()}`
+  }
   const [kind, id] = embed.embedId.split(':')
   return `https://open.spotify.com/embed/${kind}/${id}?utm_source=anahad&theme=0`
 }
 
-/** Fake-proof display title: we don't know the real title without an API. */
+/** Fake-proof display title: we don't guess more than the source tells us. */
 export function embedDisplayName(embed: ExternalEmbed): string {
-  return embed.source === 'youtube' ? 'YouTube (official embed)' : 'Spotify (official embed)'
+  if (embed.source === 'youtube') return 'YouTube (official embed)'
+  if (embed.source === 'mixcloud') return 'Mixcloud (official widget)'
+  return 'Spotify (official embed)'
 }

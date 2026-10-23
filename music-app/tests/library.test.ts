@@ -1,33 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useLibrary } from '../src/stores/library'
 import { useSettings } from '../src/stores/settings'
-import type { Track } from '../src/types'
-
-function makeTrack(i = 1): Track {
-  return {
-    id: `internet-archive:item${i}:file${i}.mp3`,
-    source: 'internet-archive',
-    identifier: `item${i}`,
-    fileName: `file${i}.mp3`,
-    title: `Song ${i}`,
-    artist: `Artist ${i}`,
-    album: `Album ${i}`,
-    artwork: null,
-    durationSec: 100,
-    formats: [],
-    licenseUrl: null,
-    language: null,
-    genres: [],
-    estimatedMoods: [],
-    year: null,
-    itemPage: `https://archive.org/details/item${i}`,
-    collection: null
-  }
-}
+import { makeTrack } from './helpers'
 
 describe('library store — playlist management', () => {
   beforeEach(async () => {
-    useLibrary.setState({ playlists: [], likedTracks: {}, savedAlbums: {}, favoriteArtists: {}, history: [], loaded: true })
+    useLibrary.setState({ playlists: [], likedTracks: {}, favoriteArtists: {}, history: [], loaded: true })
   })
 
   it('creates a playlist with defaults', () => {
@@ -101,18 +79,33 @@ describe('library store — playlist management', () => {
     expect(() => useLibrary.getState().exportPlaylist(p.id)).not.toThrow()
   })
 
-  it('imports playlist JSON and re-resolvable references', () => {
+  it('imports playlist JSON with multi-source references', () => {
     const json = JSON.stringify({
       app: 'anahad',
       name: 'Imported',
-      tracks: [{ title: 'X', artist: 'Y', identifier: 'abc123', fileName: 'a.mp3', source: 'internet-archive' }]
+      tracks: [
+        { title: 'X', artist: 'Y', identifier: 'abc123', source: 'audius' },
+        { title: 'W', identifier: 'vid999', source: 'youtube' }
+      ]
     })
     const result = useLibrary.getState().importPlaylist(json)
     expect(result.ok).toBe(true)
     const p = useLibrary.getState().playlists[0]
     expect(p.name).toBe('Imported')
     expect(p.tracks[0].identifier).toBe('abc123')
-    expect(p.tracks[0].id).toBe('internet-archive:abc123:a.mp3')
+    expect(p.tracks[0].id).toBe('audius:abc123')
+    expect(p.tracks[1].embed).toEqual({ kind: 'youtube', id: 'vid999' })
+  })
+
+  it('rejects legacy v2 (Internet Archive) imports honestly', () => {
+    const json = JSON.stringify({
+      app: 'anahad',
+      name: 'Old export',
+      tracks: [{ title: 'X', identifier: 'ia-item', fileName: 'a.mp3', source: 'internet-archive' }]
+    })
+    const result = useLibrary.getState().importPlaylist(json)
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/no longer supported/i)
   })
 
   it('rejects invalid imports honestly', () => {

@@ -1,17 +1,16 @@
-/** Search: debounced unified search with filters, suggestions, pagination. */
+/** Search: debounced unified multi-source search with filters + suggestions. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Filter, Link2, Play, Search as SearchIcon, X } from 'lucide-react'
-import { unifiedSearch, unifiedTrackSearch, buildSuggestions } from '../lib/searchService'
+import { unifiedTrackSearch, buildSuggestions, PROVIDERS } from '../lib/searchService'
 import { GENRES, LANGUAGES } from '../config/catalog'
-import { AlbumCard, AlbumCardSkeleton } from '../components/AlbumCard'
 import { TrackRow } from '../components/TrackRow'
-import { EmptyState, ErrorState, Skeleton, DegradedSources, Spinner, toast } from '../components/ui'
+import { EmptyState, Skeleton, DegradedSources, Spinner, toast } from '../components/ui'
 import { parseExternalUrl, embedSrc } from '../lib/external'
 import { useDebounce } from '../hooks/useDebounce'
-import type { ExternalEmbed } from '../types'
+import type { ExternalEmbed, SourceId, UnifiedTrackSearchResponse } from '../types'
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams()
@@ -21,57 +20,7 @@ export function SearchPage() {
   const [language, setLanguage] = useState(params.get('lang') ?? '')
   const [showFilters, setShowFilters] = useState(false)
   const [focused, setFocused] = useState(false)
-  const [page, setPage] = useState(1)
   const debounced = useDebounce(urlQuery, 350)
-
-  const search = useQuery({
-    queryKey: ['search', debounced, genre, language, page],
-    queryFn: ({ signal }) =>
-      unifiedSearch({
-        query: debounced || undefined,
-        genre: genre ? (GENRES.find((g) => g.id === genre)?.clause ?? undefined) : undefined,
-        language: language ? (LANGUAGES.find((l) => l.id === language)?.clause ?? undefined) : undefined,
-        rows: 24,
-        page,
-        sort: debounced ? 'relevance' : 'downloads',
-        signal
-      })
-  })
-
-  // Track-first results, queried PER SOURCE so one slow provider never
-  // blocks the other (Openverse's origin can be slow on cold queries).
-  const iaTracks = useQuery({
-    queryKey: ['track-search-ia', debounced, genre],
-    queryFn: ({ signal }) =>
-      unifiedTrackSearch({
-        query: debounced || undefined,
-        genre: genre ? (GENRES.find((g) => g.id === genre)?.clause ?? undefined) : undefined,
-        rows: 10,
-        providers: ['internet-archive'],
-        signal
-      }),
-    staleTime: 3 * 60 * 1000,
-    enabled: debounced.trim().length > 0
-  })
-  const ovTracks = useQuery({
-    queryKey: ['track-search-ov', debounced, genre],
-    queryFn: ({ signal }) =>
-      unifiedTrackSearch({
-        query: debounced || undefined,
-        tag: genre ? (GENRES.find((g) => g.id === genre)?.openverseTag ?? undefined) : undefined,
-        rows: 12,
-        providers: ['openverse'],
-        signal
-      }),
-    staleTime: 3 * 60 * 1000,
-    retry: 0, // the adapter already retries transient source failures internally
-    enabled: debounced.trim().length > 0
-  })
-
-  // Reset page when filters change
-  useEffect(() => {
-    setPage(1)
-  }, [debounced, genre, language])
 
   useEffect(() => {
     const next = new URLSearchParams()
@@ -83,6 +32,8 @@ export function SearchPage() {
   }, [input, genre, language])
 
   const suggestions = focused && input.trim() ? buildSuggestions(input) : []
+  const genreDef = GENRES.find((g) => g.id === genre)
+  const langDef = LANGUAGES.find((l) => l.id === language)
 
   return (
     <div className="space-y-5">
@@ -95,8 +46,8 @@ export function SearchPage() {
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             onKeyDown={(e) => e.key === 'Escape' && (e.target as HTMLInputElement).blur()}
-            placeholder="Songs, artists, albums, genres…"
-            aria-label="Search music"
+            placeholder="Songs, artists, shows, stations, genres…"
+            aria-label="Search music across connected sources"
             role="searchbox"
             className="w-full rounded-full bg-surface-raised py-3 pl-10 pr-24 text-sm text-zinc-100 placeholder-zinc-500 ring-1 ring-white/10 transition focus:outline-none focus:ring-accent/50"
             enterKeyHint="search"
@@ -178,19 +129,59 @@ export function SearchPage() {
         ) : null}
       </div>
 
-      {debounced.trim() ? <TrackResults iaTracks={iaTracks} ovTracks={ovTracks} query={debounced} /> : null}
-      <SearchResults search={search} page={page} onPage={setPage} query={debounced} />
+      {debounced.trim() ? (
+        <TrackResults
+          query={debounced}
+          opts={{
+            query: debounced || undefined,
+            tag: genreDef?.openverseTag,
+            audiusGenre: genreDef?.audiusGenre,
+            radioTag: genreDef?.radioTag,
+            radioName: genreDef?.radioName,
+            radioLanguage: langDef?.radioLanguage
+          }}
+        />
+      ) : (
+        <EmptyState
+          title="Search every connected source"
+          hint="Type above to search YouTube, Audius, live radio, Creative Commons catalogs and Mixcloud at once — real catalogs, no fake results."
+        />
+      )}
       <ExternalLinkTool />
     </div>
   )
 }
 
-type TrackQuery = ReturnType<typeof useQuery<{ tracks: import('../types').Track[]; total: number; degraded?: import('../types').SourceDegradation[] }>>
+type TrackQuery = ReturnType<typeof useQuery<UnifiedTrackSearchResponse>>
 
-function TrackResults({ iaTracks, ovTracks, query }: { iaTracks: TrackQuery; ovTracks: TrackQuery; query: string }) {
-  const ia = iaTracks.data?.tracks ?? []
-  const ov = ovTracks.data?.tracks ?? []
-  if (iaTracks.isPending && ovTracks.isPending) {
+function TrackResults({
+  query,
+  opts
+}: {
+  query: string
+  opts: { query?: string; tag?: string; audiusGenre?: string; radioTag?: string; radioName?: string; radioLanguage?: string }
+}) {
+  // One independent query per source: a slow or dead source can never block
+  // the others, and each degrades with its own honest notice. Hooks run in a
+  // fixed, unconditional order (rules of hooks).
+  const audiusQ = useTrackQuery('audius', opts)
+  const youtubeQ = useTrackQuery('youtube', opts)
+  const radioQ = useTrackQuery('radio', opts)
+  const openverseQ = useTrackQuery('openverse', opts)
+  const mixcloudQ = useTrackQuery('mixcloud', opts)
+  const bySource: [SourceId, TrackQuery][] = [
+    ['audius', audiusQ],
+    ['youtube', youtubeQ],
+    ['radio', radioQ],
+    ['openverse', openverseQ],
+    ['mixcloud', mixcloudQ]
+  ]
+
+  const anyLoading = bySource.some(([, q]) => q.isPending)
+  const allEmpty = bySource.every(([, q]) => (q.data?.tracks ?? []).length === 0)
+  const degraded = bySource.flatMap(([, q]) => q.data?.degraded ?? [])
+
+  if (anyLoading && allEmpty) {
     return (
       <section aria-label="Matching tracks" className="space-y-2">
         <h2 className="text-sm font-bold text-zinc-100">Tracks</h2>
@@ -200,130 +191,71 @@ function TrackResults({ iaTracks, ovTracks, query }: { iaTracks: TrackQuery; ovT
       </section>
     )
   }
-  if (iaTracks.isError && ovTracks.isError) return null // album results below still work
-  const contextTracks = [...ia, ...ov]
+
   return (
-    <section aria-label="Matching tracks" className="space-y-2">
+    <section aria-label="Matching tracks" className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-bold text-zinc-100">Tracks</h2>
-        <p className="text-[11px] text-zinc-600">multi-source — Internet Archive + Openverse (Jamendo · Wikimedia · Freesound)</p>
+        <p className="text-[11px] text-zinc-600">searched across every enabled source</p>
       </div>
-      {ia.length === 0 && ov.length === 0 && !ovTracks.isPending ? (
-        <div className="space-y-2">
-          <DegradedSources degraded={ovTracks.data?.degraded} />
-          <p className="rounded-xl bg-surface-raised p-3 text-xs text-zinc-500 ring-1 ring-white/5">
-            No direct track matches for “{query}” right now — album results are below.
-          </p>
-        </div>
+      {degraded.length > 0 ? <DegradedSources degraded={degraded} /> : null}
+      {allEmpty ? (
+        <p className="rounded-xl bg-surface-raised p-3 text-xs text-zinc-500 ring-1 ring-white/5">
+          No matches for “{query}” right now — sources that failed are listed above.
+        </p>
       ) : (
-        <>
-          {ia.length > 0 ? (
-            <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
-              {ia.map((t) => (
-                <TrackRow key={t.id} track={t} contextTracks={contextTracks} contextLabel={`Search: ${query}`} />
-              ))}
-            </div>
-          ) : null}
-          {ovTracks.isPending ? (
-            <p className="flex items-center gap-2 rounded-xl bg-surface-raised/50 p-3 text-xs text-zinc-500 ring-1 ring-white/5">
-              <Spinner className="h-3.5 w-3.5 text-accent" /> Loading Openverse tracks (Jamendo · Wikimedia · Freesound)…
-            </p>
-          ) : ov.length > 0 ? (
-            <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-600">From Openverse</p>
-              <DegradedSources degraded={ovTracks.data?.degraded} />
-              <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
-                {ov.map((t) => (
-                  <TrackRow key={t.id} track={t} contextTracks={contextTracks} contextLabel={`Search: ${query}`} />
-                ))}
+        bySource.map(([source, q]) => {
+          const p = providerFor(source)
+          const tracks = q.data?.tracks ?? []
+          if (!tracks.length && !q.isPending && !q.isError) return null
+          return (
+            <div key={source} className="space-y-1">
+              <div className="flex items-center gap-2 px-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">From {p.label}</p>
+                {q.isPending ? <Spinner className="h-3 w-3 text-accent" /> : null}
               </div>
+              {q.isError ? (
+                <p className="rounded-xl bg-amber-500/10 p-3 text-[11px] text-amber-300/90 ring-1 ring-amber-500/20" role="status">
+                  {p.label} is not answering right now — other sources are unaffected.
+                </p>
+              ) : tracks.length > 0 ? (
+                <div className="divide-y divide-white/5 rounded-xl bg-surface-raised/50 ring-1 ring-white/5">
+                  {tracks.map((t) => (
+                    <TrackRow key={t.id} track={t} contextTracks={tracks} contextLabel={`Search: ${query}`} showAlbum={false} />
+                  ))}
+                </div>
+              ) : null}
             </div>
-          ) : ovTracks.isError ? (
-            <p className="rounded-xl bg-amber-500/10 p-3 text-[11px] text-amber-300/90 ring-1 ring-amber-500/20" role="status">
-              Openverse is not answering right now (slow origin or anonymous quota). Internet Archive results are unaffected.
-            </p>
-          ) : null}
-        </>
+          )
+        })
       )}
     </section>
   )
 }
 
-function SearchResults({
-  search,
-  page,
-  onPage,
-  query
-}: {
-  search: ReturnType<typeof useQuery<import('../types').SearchResponse>>
-  page: number
-  onPage: (p: number) => void
-  query: string
-}) {
-  if (search.isPending) {
-    return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {[...Array(10)].map((_, i) => (
-          <AlbumCardSkeleton key={i} />
-        ))}
-      </div>
-    )
-  }
-  if (search.isError) {
-    return <ErrorState message="Album search is unavailable right now — the archive may be rate-limiting us. Track results above still work when sources are healthy." onRetry={() => void search.refetch()} />
-  }
-  const albums = search.data?.albums ?? []
-  if (albums.length === 0) {
-    return (
-      <div className="space-y-3">
-        <DegradedSources degraded={search.data?.degraded} />
-        <EmptyState
-          title={query ? `No album results for “${query}”` : 'Nothing to show yet'}
-          hint={query ? 'Check the spelling, or try broader terms like a genre or artist name.' : 'Type above to search thousands of freely licensed recordings.'}
-        />
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-4">
-      <DegradedSources degraded={search.data?.degraded} />
-      <p className="text-xs text-zinc-500">
-        {search.data?.total ? `${new Intl.NumberFormat().format(search.data.total)} matching recordings` : 'Results'} · albums: Internet Archive
-      </p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {albums.map((a) => (
-          <AlbumCard key={a.identifier} album={a} contextLabel={query ? `Search: ${query}` : 'Browse'} />
-        ))}
-      </div>
-      {albums.length >= 24 ? (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <button
-            onClick={() => onPage(Math.max(1, page - 1))}
-            disabled={page === 1}
-            className="rounded-full bg-white/5 px-4 py-2 text-xs text-zinc-300 disabled:opacity-30"
-          >
-            Previous
-          </button>
-          <span className="text-xs tabular-nums text-zinc-500">Page {page}</span>
-          <button onClick={() => onPage(page + 1)} className="rounded-full bg-white/5 px-4 py-2 text-xs text-zinc-300 hover:bg-white/10">
-            Next
-          </button>
-        </div>
-      ) : null}
-    </div>
-  )
+function providerFor(source: SourceId) {
+  return PROVIDERS.find((p) => p.id === source)!
 }
 
-/** Official-embed tool: paste a YouTube/Spotify link to queue it. No keys. */
+function useTrackQuery(source: SourceId, opts: { query?: string; tag?: string; audiusGenre?: string; radioTag?: string; radioName?: string; radioLanguage?: string }): TrackQuery {
+  return useQuery({
+    queryKey: ['track-search', source, opts],
+    queryFn: ({ signal }) => unifiedTrackSearch({ ...opts, providers: [source], rows: 12, signal }),
+    staleTime: 3 * 60 * 1000,
+    retry: 0, // adapters handle their own transient retries + honest errors
+    enabled: Boolean(opts.query?.trim())
+  })
+}
+
+/** Official-embed tool: paste a YouTube/Spotify/Mixcloud link to play it. No keys. */
 function ExternalLinkTool() {
   const [url, setUrl] = useState('')
   const [embed, setEmbed] = useState<ExternalEmbed | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
 
   function add() {
     const parsed = parseExternalUrl(url)
     if (!parsed) {
-      toast('That doesn\'t look like a YouTube or Spotify link', 'error')
+      toast('That doesn\'t look like a YouTube, Spotify or Mixcloud link', 'error')
       return
     }
     setEmbed(parsed)
@@ -337,16 +269,15 @@ function ExternalLinkTool() {
         <Link2 className="h-4 w-4 text-accent" aria-hidden /> Play an official embed
       </h3>
       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-        Paste a YouTube or Spotify link to add its <strong className="text-zinc-400">official embedded player</strong> below.
+        Paste a YouTube, Spotify or Mixcloud link to add its <strong className="text-zinc-400">official embedded player</strong> below.
         Their controls handle playback; Anahad never extracts streams or bypasses ads.
       </p>
       <div className="mt-3 flex gap-2">
         <input
-          ref={inputRef}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="https://www.youtube.com/watch?v=… or https://open.spotify.com/track/…"
+          placeholder="https://www.youtube.com/watch?v=… or https://www.mixcloud.com/…"
           aria-label="External media URL"
           className="min-w-0 flex-1 rounded-lg bg-black/30 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 ring-1 ring-white/10 focus:outline-none focus:ring-accent/50"
         />
@@ -361,7 +292,7 @@ function ExternalLinkTool() {
             src={embedSrc(embed, false)}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
-            className="aspect-video w-full"
+            className={embed.source === 'spotify' ? 'h-36 w-full' : 'aspect-video w-full'}
           />
         </div>
       ) : null}

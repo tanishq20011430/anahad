@@ -22,7 +22,7 @@ describe('MseStream — capability gating', () => {
 describe('resolveTrackFormats — multi-source dispatch', () => {
   it('returns tracks that already carry formats untouched (no network)', async () => {
     const t = {
-      id: 'openverse:uuid-1:f.mp3',
+      id: 'openverse:uuid-1',
       source: 'openverse',
       identifier: 'uuid-1',
       fileName: 'f.mp3',
@@ -32,6 +32,7 @@ describe('resolveTrackFormats — multi-source dispatch', () => {
       artwork: null,
       durationSec: 100,
       formats: [{ url: 'https://h.example/f.mp3', fileName: 'f.mp3', label: 'MP3 (original)', approxBitrateKbps: null, sizeBytes: null, isLossless: false, mimeType: 'audio/mpeg' }],
+      embed: null,
       licenseUrl: null,
       language: null,
       genres: [],
@@ -43,11 +44,36 @@ describe('resolveTrackFormats — multi-source dispatch', () => {
     const resolved = await resolveTrackFormats(t)
     expect(resolved).toBe(t) // same reference — no resolution needed
   })
+
+  it('returns YouTube tracks untouched — the official embed IS the transport', async () => {
+    const t = {
+      id: 'youtube:vidXYZ',
+      source: 'youtube',
+      identifier: 'vidXYZ',
+      fileName: '',
+      title: 'T',
+      artist: 'A',
+      album: '',
+      artwork: null,
+      durationSec: 200,
+      formats: [],
+      embed: { kind: 'youtube' as const, id: 'vidXYZ' },
+      licenseUrl: null,
+      language: null,
+      genres: [],
+      estimatedMoods: [],
+      year: null,
+      itemPage: 'https://www.youtube.com/watch?v=vidXYZ',
+      collection: null
+    } as import('../src/types').Track
+    const resolved = await resolveTrackFormats(t)
+    expect(resolved).toBe(t)
+  })
 })
 
 describe('source registry — verified vs excluded', () => {
   it('lists only verified-working sources as connected', () => {
-    expect(VERIFIED_SOURCES.map((s) => s.id)).toEqual(['internet-archive', 'openverse'])
+    expect(VERIFIED_SOURCES.map((s) => s.id)).toEqual(['youtube', 'audius', 'radio', 'openverse', 'mixcloud'])
     for (const s of VERIFIED_SOURCES) {
       expect(s.verifiedAt).toBeTruthy()
       expect(s.summary.length).toBeGreaterThan(20)
@@ -56,7 +82,7 @@ describe('source registry — verified vs excluded', () => {
 
   it('documents an explicit access-rule reason for every excluded source', () => {
     const labels = EXCLUDED_SOURCES.map((e) => e.label)
-    for (const l of ['Free Music Archive', 'ccMixter', 'Free To Use (freetouse.com)', 'FreePD']) {
+    for (const l of ['Free Music Archive', 'ccMixter', 'Free To Use (freetouse.com)', 'FreePD', 'Invidious (as a YouTube relay)']) {
       expect(labels).toContain(l)
     }
     for (const e of EXCLUDED_SOURCES) {
@@ -65,11 +91,13 @@ describe('source registry — verified vs excluded', () => {
   })
 
   it('maps source chips honestly', () => {
-    expect(sourceChipFor('internet-archive', null)).toBe('Internet Archive')
+    expect(sourceChipFor('youtube', null)).toBe('YouTube')
+    expect(sourceChipFor('audius', null)).toBe('Audius')
+    expect(sourceChipFor('radio', null)).toBe('Live radio')
+    expect(sourceChipFor('mixcloud', null)).toBe('Mixcloud')
     expect(sourceChipFor('openverse', 'jamendo')).toBe('Jamendo · Openverse')
     expect(sourceChipFor('openverse', 'wikimedia_audio')).toBe('Wikimedia · Openverse')
     expect(sourceChipFor('openverse', 'freesound')).toBe('Freesound · Openverse')
     expect(sourceChipFor('openverse', null)).toBe('Openverse')
-    expect(sourceChipFor('youtube', null)).toBe('YouTube embed')
   })
 })

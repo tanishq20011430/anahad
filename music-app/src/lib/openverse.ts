@@ -20,11 +20,9 @@
  */
 
 import type {
-  AlbumResult,
   AudioFormat,
   MusicProvider,
   SearchOptions,
-  SearchResponse,
   Track,
   TrackSearchResponse
 } from '../types'
@@ -229,6 +227,7 @@ export function normalizeOvAudio(r: OvAudio): Track | null {
     artwork: r.thumbnail ?? null,
     durationSec,
     formats,
+    embed: null,
     licenseUrl: r.license_url ?? openverseLicenseUrl(r.license, r.license_version),
     licenseName: openverseLicenseName(r.license, r.license_version),
     language: null,
@@ -298,7 +297,7 @@ export async function openverseSearchTracks(options: SearchOptions): Promise<Tra
 }
 
 /** Fetch a single Openverse track by uuid (detail endpoint, same shape). */
-async function getTrackById(uuid: string, signal?: AbortSignal): Promise<Track | null> {
+export async function openverseGetTrackById(uuid: string, signal?: AbortSignal): Promise<Track | null> {
   const payload = (await fetchJson(`${API_BASE}/${encodeURIComponent(uuid)}/`, signal)) as OvAudio
   return normalizeOvAudio(payload)
 }
@@ -323,16 +322,7 @@ export const openverseProvider: MusicProvider = {
   },
 
   // Openverse is track-first: no album cards are fabricated from audio_sets.
-  async searchAlbums(): Promise<SearchResponse> {
-    return { albums: [] as AlbumResult[], total: 0, page: 1, rows: 0 }
-  },
-
   searchTracks: openverseSearchTracks,
-
-  async getItemTracks(identifier: string, signal?: AbortSignal): Promise<Track[]> {
-    const t = await getTrackById(identifier, signal)
-    return t ? [t] : []
-  },
 
   async getRelatedTracks(track: Track, signal?: AbortSignal): Promise<Track[]> {
     // The related endpoint does not accept category filters — filter after mapping.

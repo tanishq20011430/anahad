@@ -24,17 +24,19 @@ export function PrivacyPage() {
             advertising or telemetry requests. Period.
           </li>
           <li>
-            <strong className="text-zinc-200">Requests to music sources.</strong> Search and playback fetch public data
-            from archive.org and the Openverse API (which aggregates Jamendo, Wikimedia Commons and Freesound); like any
-            web service, they see your requests and may log them under their own privacy policies. Anahad adds nothing to
-            those requests — no identifiers, no profiles.
+            <strong className="text-zinc-200">Requests to music sources.</strong> Search and playback talk directly to the
+            connected sources' public endpoints: the Piped community relays and YouTube's player (for YouTube), the
+            official Audius API, the radio-browser.info directory, the Openverse API (Jamendo, Wikimedia Commons,
+            Freesound) and Mixcloud's public API. Like any web service, they see your requests and may log them under
+            their own privacy policies. Anahad adds nothing to those requests — no identifiers, no profiles.
           </li>
           <li>
             <strong className="text-zinc-200">Temporary audio cache is RAM-only.</strong> To reduce gaps between songs,
             the player keeps small opening slices (≈256 KB) of upcoming tracks in memory, inside a hard budget you set in
             Settings (Off / 32 MB / 96 MB). Slices are deleted when the track ends, when the queue changes, after 30
             minutes, or via “Clear now”. Nothing audio-related is ever written to IndexedDB, Cache Storage, or disk, and
-            closing the tab releases everything.
+            closing the tab releases everything. YouTube audio is never cached by the app — it streams inside YouTube's
+            official player, under YouTube's own delivery.
           </li>
           <li>
             <strong className="text-zinc-200">History is optional.</strong> Disable it in Settings and plays stop being
@@ -45,9 +47,10 @@ export function PrivacyPage() {
             can be lost if you clear site data — export playlists to keep them.
           </li>
           <li>
-            <strong className="text-zinc-200">Official embeds (optional).</strong> If you paste a YouTube or Spotify link,
-            their official embedded player loads and is governed by their own privacy terms. Anahad never extracts or
-            circumvents their streams or ads.
+            <strong className="text-zinc-200">Embedded & provider-controlled players.</strong> YouTube playback always
+            runs inside YouTube's official embedded player, and Mixcloud/Spotify items render their official widgets when
+            you play or paste them. Those players are governed by their own privacy terms. Anahad never extracts streams
+            or circumvents ads.
           </li>
         </ul>
       </section>
@@ -58,23 +61,62 @@ export function PrivacyPage() {
         </h2>
         <div className="mt-3 space-y-4 text-xs leading-relaxed text-zinc-400">
           <div>
-            <p className="font-semibold text-zinc-200">Internet Archive (archive.org) — primary catalog</p>
+            <p className="font-semibold text-zinc-200">YouTube — official player, community search relays</p>
             <p className="mt-1">
-              Search metadata and audio files are fetched from the public advancedsearch/metadata APIs and download
-              endpoints. Licenses vary <em>per item</em>: some uploads are Creative Commons, some are public domain, some
-              (like the Live Music Archive) are band-approved recordings with their own terms. Anahad shows each item's
-              license when available and links to the source page so you can verify rights before any reuse. Being on
-              archive.org does <strong className="text-zinc-300">not</strong> automatically mean public domain.
+              Search results come from community-run{' '}
+              <a href="https://github.com/TeamPiped/Piped" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                Piped
+              </a>{' '}
+              relays — open-source servers that expose YouTube search as JSON with permissive CORS. Playback always
+              happens inside the <strong className="text-zinc-300">official YouTube IFrame Player</strong> (hidden,
+              audio-first): YouTube controls delivery, counts plays, and enforces its own rules. Anahad never extracts
+              media URLs, never bypasses ads, and needs no API keys. If both configured relays are down, the source
+              degrades with a notice while other sources keep working.
             </p>
-            <a href="https://archive.org/details/etree" target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-accent-soft hover:underline">
-              Live Music Archive <ExternalLink className="h-3 w-3" />
+            <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-accent-soft hover:underline">
+              YouTube Terms of Service <ExternalLink className="h-3 w-3" />
             </a>
           </div>
           <div>
-            <p className="font-semibold text-zinc-200">Openverse (openverse.org) — keyless CC aggregation</p>
+            <p className="font-semibold text-zinc-200">Audius — official open API</p>
+            <p className="mt-1">
+              Full-length tracks from{' '}
+              <a href="https://audius.co" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                audius.co
+              </a>{' '}
+              artists, fetched from Audius' official keyless API (only a free-form app name is sent). The official stream
+              endpoint serves the audio with CORS + Range support, which is what makes seamless pre-buffering possible.
+              Each track remains the property of its uploader; Anahad links to it for verification.
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold text-zinc-200">Radio Browser — the open radio directory</p>
+            <p className="mt-1">
+              Live stations come from{' '}
+              <a href="https://www.radio-browser.info/" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                radio-browser.info
+              </a>
+              , a community-maintained directory used by many open-source players. Streams belong to their broadcasters;
+              codec and bitrate metadata comes from the directory verbatim. Only HTTPS streams are listed, and HLS-only
+              stations are excluded rather than half-supported.
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold text-zinc-200">Mixcloud — official widget</p>
+            <p className="mt-1">
+              Shows, sets and long-form mixes (including large devotional catalogs) are discovered through Mixcloud's
+              keyless public API and played through the{' '}
+              <a href="https://www.mixcloud.com" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                official Mixcloud widget
+              </a>
+              . Mixcloud doesn't expose direct audio URLs, so their player stays in control.
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold text-zinc-200">Openverse — keyless CC aggregation</p>
             <p className="mt-1">
               Track search runs through the Openverse API (built by Creative Commons / WordPress), which indexes
-              full-length Creative Commons music. Tracks come from{' '}
+              full-length Creative Commons music from{' '}
               <a href="https://www.jamendo.com" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
                 Jamendo
               </a>
@@ -90,20 +132,6 @@ export function PrivacyPage() {
               quota applies (≈200 searches/day); Anahad caches results locally to stay well inside it and shows a notice
               when a source is temporarily unavailable.
             </p>
-            <a href="https://openverse.org" target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-accent-soft hover:underline">
-              openverse.org <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-          <div>
-            <p className="font-semibold text-zinc-200">Collections we lean on</p>
-            <ul className="mt-1 list-inside list-disc space-y-0.5">
-              <li>Netlabels — Creative Commons music from independent netlabels</li>
-              <li>Live Music Archive (etree) — band-approved live concerts</li>
-              <li>78rpm & George Blood collection — digitized historical discs</li>
-              <li>Musopen — public-domain classical performances</li>
-              <li>Jamendo via Openverse — independent CC artists, full-length tracks</li>
-              <li>Wikimedia Commons — recordings including Indian classical, bhajans and folk</li>
-            </ul>
           </div>
         </div>
       </section>
@@ -113,6 +141,21 @@ export function PrivacyPage() {
           <TriangleAlert className="h-4 w-4 text-amber-400" aria-hidden /> Honest limitations
         </h2>
         <ul className="mt-3 space-y-2.5 text-xs leading-relaxed text-zinc-400">
+          <li>
+            <strong className="text-zinc-200">Internet Archive was removed on purpose (v3):</strong> the app now focuses
+            on music-first catalogs. Its APIs remain open and keyless — nothing about this removal reflects an access
+            problem. Existing v2 playlist exports (archive.org references) can no longer be imported.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Piped relays are community infrastructure.</strong> YouTube search depends
+            on volunteer-run instances; they can be slow or occasionally down. Anahad tries both configured relays,
+            remembers the healthy one, and degrades honestly — it never falls back to unauthorized stream extraction.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Invidious:</strong> probed as a YouTube relay fallback — every reachable
+            public instance blocks anonymous/datacenter access or locks CORS to its own web app, so it can't be used from
+            a third-party browser app. We don't spoof origins.
+          </li>
           <li>
             <strong className="text-zinc-200">Free Music Archive / FreePD:</strong> not integrated — FMA shut down its
             public API and FreePD closed its site. There is nothing legitimate left to connect to.
@@ -131,23 +174,28 @@ export function PrivacyPage() {
             would break the zero-configuration promise. Jamendo music remains available in-app through Openverse.
           </li>
           <li>
-            <strong className="text-zinc-200">YouTube / Spotify:</strong> supported only via their official embedded
-            players for links you paste. Keyless search APIs don't exist for them, so Anahad can't discover their content
-            for you — and never scrapes or extracts.
+            <strong className="text-zinc-200">Spotify:</strong> supported only via its official embedded player for links
+            you paste. Keyless search APIs don't exist for it, so Anahad can't discover Spotify content for you — and
+            never scrapes or extracts.
           </li>
           <li>
-            <strong className="text-zinc-200">Moods:</strong> source metadata rarely tags moods, so Anahad estimates them
-            from titles/subjects and labels them “estimated”. Genre/language tags come from the source as-is.
+            <strong className="text-zinc-200">Live radio:</strong> streams are live — no duration, no seeking, and
+            broadcaster uptime varies. HTTP-only stations are intentionally invisible on HTTPS deployments.
           </li>
           <li>
-            <strong className="text-zinc-200">Quality:</strong> bitrates shown are computed from real file sizes or taken
-            verbatim from the source. When a source doesn't expose quality data (typical for Openverse results), the UI
-            says “source-provided” instead of inventing numbers.
+            <strong className="text-zinc-200">Moods:</strong> sources rarely tag moods (Audius does), so Anahad estimates
+            them from titles/subjects and labels them “estimated”. Genre/language tags come from the source as-is.
           </li>
           <li>
-            <strong className="text-zinc-200">Prebuffering coverage:</strong> next-track prebuffering works only where a
-            source's host is verified CORS + Range capable (archive.org storage, Jamendo storage, Freesound CDN,
-            Wikimedia). Other hosts stream natively and still get metadata prefetching.
+            <strong className="text-zinc-200">Quality:</strong> bitrates shown come verbatim from the source (Radio
+            Browser publishes them; Audius/Openverse usually don't). For YouTube, the picker sends a quality request but
+            YouTube's adaptive streaming decides — the UI says so instead of pretending.
+          </li>
+          <li>
+            <strong className="text-zinc-200">Prebuffering coverage:</strong> audio pre-buffering works where a source's
+            host is verified CORS + Range capable (Audius streams, Jamendo storage, Freesound CDN, Wikimedia). YouTube
+            uses a cued hidden official player instead; radio and Mixcloud stream directly / via widget, and still get
+            metadata prefetching.
           </li>
         </ul>
       </section>

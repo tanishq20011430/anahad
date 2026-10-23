@@ -21,6 +21,7 @@ import { useEffect, useRef } from 'react'
 import { usePlayer } from '../stores/player'
 import type { AudioController, PlaybackRequest } from '../stores/player'
 import { MseStream } from '../lib/mseStream'
+import { ytTransport } from '../lib/ytPlayer'
 
 export function useAudioEngine(): void {
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -113,8 +114,54 @@ export function useAudioEngine(): void {
       }
     }
 
+    /* ------------------- YouTube transport event wiring ------------------- */
+    let activeTransport: 'audio' | 'yt' = 'audio'
+    const unsubYtFrame = ytTransport.onFrame((f) => {
+      switch (f.state) {
+        case 'playing':
+          store().onPlaying()
+          if (f.duration > 0) store().onDuration(f.duration)
+          store().onTimeUpdate(f.currentTime)
+          store().onBuffered(f.loadedFraction * f.duration)
+          break
+        case 'buffering':
+          store().onWaiting()
+          if (f.duration > 0) store().onDuration(f.duration)
+          store().onBuffered(f.loadedFraction * f.duration)
+          break
+        case 'paused':
+          store().onPause()
+          store().onTimeUpdate(f.currentTime)
+          break
+        case 'ended':
+          void store().onEnded()
+          break
+        default:
+          break
+      }
+    })
+    const unsubYtError = ytTransport.onError(() => {
+      // Embedding disabled / video gone → honest skip through the normal path.
+      void store().onError()
+    })
+
     const controller: AudioController = {
       async load(req: PlaybackRequest) {
+        if (req.videoId) {
+          // YouTube path — park the audio element, hand over to the official
+          // hidden player (promotion of a cued spare happens inside).
+          activeTransport = 'yt'
+          stream?.stop()
+          stream = null
+          audio.pause()
+          audio.removeAttribute('src')
+          audio.load()
+          await ytTransport.load(req.videoId)
+          return
+        }
+        // Audio path — make sure the YouTube transport is silent.
+        activeTransport = 'audio'
+        ytTransport.pause()
         stream?.stop()
         stream = null
         audio.pause()
@@ -140,20 +187,28 @@ export function useAudioEngine(): void {
         }
         await nativeLoad(req.url, 0)
       },
-      play: () => audio.play(),
-      pause: () => audio.pause(),
+      play: () => (activeTransport === 'yt' ? ytTransport.play() : audio.play()),
+      pause: () => (activeTransport === 'yt' ? ytTransport.pause() : audio.pause()),
       seekTo: (sec) => {
-        if (Number.isFinite(sec)) audio.currentTime = Math.max(0, sec)
+        if (!Number.isFinite(sec)) return
+        if (activeTransport === 'yt') ytTransport.seekTo(sec)
+        else audio.currentTime = Math.max(0, sec)
       },
       setVolume: (v) => {
-        audio.volume = v
-        audio.muted = false
+        if (activeTransport === 'yt') {
+          ytTransport.setVolume(v)
+        } else {
+          audio.volume = v
+          audio.muted = false
+        }
       },
       setMuted: (m) => {
-        audio.muted = m
+        if (activeTransport === 'yt') ytTransport.setMuted(m)
+        else audio.muted = m
       },
       setSpeed: (s) => {
-        audio.playbackRate = s
+        if (activeTransport === 'yt') ytTransport.setSpeed(s)
+        else audio.playbackRate = s
       }
     }
     store().registerController(controller)
@@ -181,6 +236,8 @@ export function useAudioEngine(): void {
       const unsub = usePlayer.subscribe(updateSession)
       return () => {
         unsub()
+        unsubYtFrame()
+        unsubYtError()
         for (const [name, fn] of listeners()) audio.removeEventListener(name, fn)
         stream?.stop()
         stream = null
@@ -207,6 +264,8 @@ export function useAudioEngine(): void {
     }
 
     return () => {
+      unsubYtFrame()
+      unsubYtError()
       for (const [name, fn] of listeners()) audio.removeEventListener(name, fn)
       stream?.stop()
       stream = null

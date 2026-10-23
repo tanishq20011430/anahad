@@ -7,30 +7,45 @@
  */
 
 /**
- * Connected sources. `youtube`/`spotify` remain embed-only (official iframes,
- * provider-controlled transport). All others stream real audio directly.
+ * Connected sources.
+ * - `youtube`  — search via community scraper APIs (Piped), playback through
+ *                the official YouTube IFrame Player API.
+ * - `audius`   — official keyless API, direct full-length audio (CORS+Range).
+ * - `radio`    — Radio Browser open directory, direct live streams.
+ * - `openverse`— CC tracks aggregated by the Openverse API.
+ * - `mixcloud` — keyless search API, playback via the official widget embed.
+ * - `spotify`  — paste-link official embed only (no keyless search API).
  */
-export type SourceId = 'internet-archive' | 'openverse' | 'youtube' | 'spotify'
+export type SourceId = 'youtube' | 'audius' | 'radio' | 'openverse' | 'mixcloud' | 'spotify'
 
-/** A concrete, playable audio file derivative with verifiable metadata. */
+/** A concrete, playable audio file/URL with verifiable metadata. */
 export interface AudioFormat {
   /** Direct media URL (authorized by the source). */
   url: string
-  /** Original file name at the source. */
+  /** Original file/stream name at the source. */
   fileName: string
-  /** Human label, e.g. "VBR MP3", "64Kbps MP3", "FLAC". */
+  /** Human label, e.g. "MP3 128 kbps", "AAC 64 kbps", "MP3 (original)". */
   label: string
-  /** Average bitrate computed from file size + duration. Approximate for VBR. */
+  /** Bitrate when the source provides it. Never computed or invented. */
   approxBitrateKbps: number | null
   sizeBytes: number | null
   isLossless: boolean
   mimeType: string
 }
 
+/** Embedded player reference for sources that play through official widgets. */
+export interface TrackEmbed {
+  kind: 'youtube' | 'mixcloud'
+  /** YouTube video id, or Mixcloud cloudcast key ("/user/slug/"). */
+  id: string
+}
+
 export interface ProviderCapabilities {
   searchableMetadata: boolean
   artworkAvailable: boolean
+  /** Streams real audio directly through the app's own transport. */
   directAudio: boolean
+  /** Plays through an official embedded player (provider controls transport). */
   embeddedPlayback: boolean
   externalLinkOnly: boolean
   licenseInfoAvailable: boolean
@@ -38,10 +53,10 @@ export interface ProviderCapabilities {
 }
 
 export interface Track {
-  /** Stable unique id: `${source}:${identifier}:${fileName}` */
+  /** Stable unique id: `${source}:${identifier}` (plus file name when useful). */
   id: string
   source: SourceId
-  /** Source item identifier (e.g. archive.org item id or Openverse uuid). */
+  /** Source item identifier (e.g. Openverse uuid, Audius id, station uuid). */
   identifier: string
   fileName: string
   title: string
@@ -49,8 +64,12 @@ export interface Track {
   album: string
   artwork: string | null
   durationSec: number | null
+  /** True for live streams (no duration, no seek). */
+  isLive?: boolean
   /** All playable derivatives, ordered best-first. Empty = not directly playable. */
   formats: AudioFormat[]
+  /** Official embed reference when playback goes through the provider's player. */
+  embed: TrackEmbed | null
   licenseUrl: string | null
   /** Human license label when the source provides one verbatim (never invented). */
   licenseName?: string | null
@@ -65,40 +84,28 @@ export interface Track {
   collection: string | null
 }
 
-export interface AlbumResult {
-  identifier: string
-  source: SourceId
-  title: string
-  creator: string
-  year: number | null
-  artwork: string
-  downloads: number
-  subjects: string[]
-  language: string | null
-  licenseUrl: string | null
-  itemPage: string
-}
-
 export interface SearchOptions {
   query?: string
-  /** Source-native tag for track-first providers (e.g. Openverse tag). */
+  /** Source-native tag for tag-first providers (Openverse). */
   tag?: string
+  /** Audius genre constant, e.g. "Electronic", "Devotional", "Lo-Fi". */
+  audiusGenre?: string
+  /** Audius mood constant, e.g. "Peaceful", "Energizing". */
+  audiusMood?: string
+  /** Radio Browser tag search (e.g. "jazz", "bhajan"). */
+  radioTag?: string
+  /** Radio Browser station-name-contains search. */
+  radioName?: string
+  /** Radio Browser language search (lowercase name, e.g. "hindi"). */
+  radioLanguage?: string
   /** Restrict the search to these sources (default: all enabled). */
   providers?: SourceId[]
-  genre?: string
-  mood?: string
-  language?: string
-  collection?: string
-  /** Exact creator/artist field search (sanitized internally). */
-  creator?: string
   page?: number
   rows?: number
-  playableOnly?: boolean
-  sort?: 'relevance' | 'downloads' | 'date'
   signal?: AbortSignal
 }
 
-/** Track-first search response (Openverse and friends). */
+/** Track-first search response (every provider in v3 is track-shaped). */
 export interface TrackSearchResponse {
   tracks: Track[]
   total: number
@@ -108,15 +115,6 @@ export interface SourceDegradation {
   source: SourceId
   /** Honest, user-displayable reason (quota, CORS, outage…). */
   message: string
-}
-
-export interface SearchResponse {
-  albums: AlbumResult[]
-  total: number
-  page: number
-  rows: number
-  /** Sources that failed or were skipped during this search (empty = all healthy). */
-  degraded?: SourceDegradation[]
 }
 
 export interface UnifiedTrackSearchResponse {
@@ -135,13 +133,11 @@ export interface MusicProvider {
   capabilities: ProviderCapabilities
   /** Whether this provider participates in multi-source search by default. */
   enabledByDefault: boolean
-  searchAlbums(options: SearchOptions): Promise<SearchResponse>
-  /** Track-first search — present on providers whose catalog is track-shaped. */
-  searchTracks?(options: SearchOptions): Promise<TrackSearchResponse>
-  /** Fetch all playable tracks of an item (album / single-track resource). */
-  getItemTracks(identifier: string, signal?: AbortSignal): Promise<Track[]>
+  searchTracks(options: SearchOptions): Promise<TrackSearchResponse>
   /** Source-provided related tracks, when the API offers them. */
   getRelatedTracks?(track: Track, signal?: AbortSignal): Promise<Track[]>
+  /** Re-fetch full playable data for a track that carries a reference only. */
+  resolveTrack?(track: Track, signal?: AbortSignal): Promise<Track>
 }
 
 export type CacheMode = 'off' | 'small' | 'standard'
@@ -186,8 +182,9 @@ export type QualityPreference = 'auto' | 'highest' | 'data-saver' | 'standard' |
 
 /* -------------------------------- Embeds ---------------------------------- */
 
+/** Official embed rendered from a pasted link (Search page tool). */
 export interface ExternalEmbed {
-  source: 'youtube' | 'spotify'
+  source: 'youtube' | 'spotify' | 'mixcloud'
   /** Canonical id used by the official embed player. */
   embedId: string
   originalUrl: string

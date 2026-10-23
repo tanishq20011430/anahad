@@ -11,10 +11,11 @@
 
 import { create } from 'zustand'
 import type { AudioFormat, ExternalEmbed, RepeatMode, Track } from '../types'
-import { pickFormat } from '../lib/archive'
+import { pickFormat, ytQualityFor } from '../lib/quality'
 import { resolveTrackFormats } from '../lib/resolve'
 import { audioCache } from '../lib/audioCache'
 import { preload } from '../lib/preload'
+import { ytTransport } from '../lib/ytPlayer'
 import { useSettings } from './settings'
 import { useLibrary } from './library'
 import { clamp } from '../lib/format'
@@ -25,6 +26,8 @@ export interface PlaybackRequest {
   mimeType: string
   /** Prebuffered leading slice (null when none) — used by the MSE pipeline. */
   seed: Blob | null
+  /** YouTube video id — routes the request to the official IFrame transport. */
+  videoId?: string
 }
 
 export interface AudioController {
@@ -64,6 +67,8 @@ interface PlayerState {
   /** fileNames already tried for the current track (format fallback). */
   triedFormats: string[]
   loadToken: number
+  /** Consecutive tracks that failed to play — drives the skip circuit breaker. */
+  consecutiveErrors: number
 
   controller: AudioController | null
 
@@ -124,9 +129,52 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const resolved = await resolveTrackFormats(track)
     if (get().loadToken !== token) return // stale load — a newer command superseded it
 
-    // Embedded sources: render official iframe, provider controls playback.
-    if (resolved.source === 'youtube' || resolved.source === 'spotify') {
-      set({ isPlaying: false, isLoading: false })
+    // YouTube: playback through the OFFICIAL IFrame Player transport. Our
+    // controls (play/pause/seek/volume/queue) drive the hidden player; the
+    // video itself stays offscreen. No stream extraction is ever performed.
+    if (resolved.source === 'youtube' && resolved.embed?.kind === 'youtube') {
+      set({
+        currentFormat: null,
+        embed: null,
+        duration: resolved.durationSec ?? 0,
+        isLoading: true,
+        isBuffering: false,
+        bufferedEnd: 0,
+        playbackFromCache: false
+      })
+      const ctrlYt = get().controller
+      if (!ctrlYt) {
+        set({ isLoading: false })
+        return
+      }
+      ytTransport.setRequestedQuality(ytQualityFor(useSettings.getState().quality))
+      await ctrlYt.load({ url: '', mimeType: '', seed: null, videoId: resolved.embed.id })
+      if (get().loadToken !== token) return
+      ctrlYt.setVolume(get().muted ? 0 : get().volume)
+      ctrlYt.setSpeed(get().speed)
+      await ctrlYt.play()
+      if (get().loadToken !== token) return
+      set({ isPlaying: true })
+      preload.notifyTrackChanged()
+      return
+    }
+
+    // Mixcloud: no keyless direct audio exists — render the official widget
+    // and hand control to it (honest, provider-controlled transport).
+    if (resolved.source === 'mixcloud' && resolved.embed?.kind === 'mixcloud') {
+      set({
+        currentFormat: null,
+        embed: {
+          source: 'mixcloud',
+          embedId: resolved.embed.id,
+          originalUrl: resolved.itemPage,
+          title: resolved.title
+        },
+        isPlaying: false,
+        isLoading: false,
+        duration: 0,
+        currentTime: 0
+      })
       return
     }
 
@@ -234,13 +282,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
     error: null,
     triedFormats: [],
     loadToken: 0,
+    consecutiveErrors: 0,
 
     controller: null,
 
     registerController: (c) => set({ controller: c }),
 
     playTracks: async (tracks, startIndex = 0, contextLabel = null) => {
-      const playable = tracks.filter((t) => t.source !== 'internet-archive' || t.formats.length >= 0)
+      const playable = tracks.filter((t) => t.formats.length > 0 || t.embed)
       if (playable.length === 0) return
       const idx = clamp(startIndex, 0, playable.length - 1)
       set((s) => ({
@@ -433,7 +482,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (Number.isFinite(end) && end >= 0) set({ bufferedEnd: end })
     },
     onDuration: (d) => set({ duration: Number.isFinite(d) && d > 0 ? d : get().duration }),
-    onPlaying: () => set({ isPlaying: true, isLoading: false, isBuffering: false, error: null }),
+    onPlaying: () => set({ isPlaying: true, isLoading: false, isBuffering: false, error: null, consecutiveErrors: 0 }),
     onCanPlay: () => set({ isBuffering: false }),
     onWaiting: () => set({ isBuffering: true }),
     onPause: () => set({ isPlaying: false }),
@@ -476,8 +525,20 @@ export const usePlayer = create<PlayerState>((set, get) => {
         }
         return
       }
-      // All formats failed — record honest error and move on automatically.
-      set({ error: `Couldn't play “${track.title}”. Skipped to the next available track.`, isLoading: false, isPlaying: false })
+      // All formats failed — record honest error and move on automatically,
+      // with a circuit breaker: after several consecutive dead tracks, stop
+      // burning through the queue and let the user decide.
+      const consecutive = s.consecutiveErrors + 1
+      if (consecutive >= 4) {
+        set({
+          error: `Several tracks in a row couldn't play (last: “${track.title}”). Playback stopped — try another source or check your connection.`,
+          isLoading: false,
+          isPlaying: false,
+          consecutiveErrors: consecutive
+        })
+        return
+      }
+      set({ error: `Couldn't play “${track.title}”. Skipped to the next available track.`, isLoading: false, isPlaying: false, consecutiveErrors: consecutive })
       if (useSettings.getState().autoplayNext) await get().next({ auto: true })
     }
   }

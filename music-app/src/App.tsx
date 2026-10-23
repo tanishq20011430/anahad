@@ -17,8 +17,6 @@ const SearchPage = lazy(() => import('./pages/Search').then((m) => ({ default: m
 const GenresPage = lazy(() => import('./pages/Browse').then((m) => ({ default: m.GenresPage })))
 const MoodsPage = lazy(() => import('./pages/Browse').then((m) => ({ default: m.MoodsPage })))
 const ShelfPage = lazy(() => import('./pages/Browse').then((m) => ({ default: m.ShelfPage })))
-const AlbumPage = lazy(() => import('./pages/Album').then((m) => ({ default: m.AlbumPage })))
-const ArtistPage = lazy(() => import('./pages/Artist').then((m) => ({ default: m.ArtistPage })))
 const TrackDetailPage = lazy(() => import('./pages/TrackDetail').then((m) => ({ default: m.TrackDetailPage })))
 const PlaylistsPage = lazy(() => import('./pages/Playlists').then((m) => ({ default: m.PlaylistsPage })))
 const PlaylistDetailPage = lazy(() => import('./pages/PlaylistDetail').then((m) => ({ default: m.PlaylistDetailPage })))
@@ -82,9 +80,7 @@ export default function App() {
             <Route path="/moods" element={<Suspense fallback={<PageFallback />}><MoodsPage /></Suspense>} />
             <Route path="/genres/:id" element={<Suspense fallback={<PageFallback />}><ShelfPage kind="genre" /></Suspense>} />
             <Route path="/moods/:id" element={<Suspense fallback={<PageFallback />}><ShelfPage kind="mood" /></Suspense>} />
-            <Route path="/album/:identifier" element={<Suspense fallback={<PageFallback />}><AlbumPage /></Suspense>} />
-            <Route path="/artist/:name" element={<Suspense fallback={<PageFallback />}><ArtistPage /></Suspense>} />
-            <Route path="/track/:identifier/:fileName" element={<Suspense fallback={<PageFallback />}><TrackDetailPage /></Suspense>} />
+            <Route path="/track/:source/:identifier" element={<Suspense fallback={<PageFallback />}><TrackDetailPage /></Suspense>} />
             <Route path="/playlists" element={<Suspense fallback={<PageFallback />}><PlaylistsPage /></Suspense>} />
             <Route path="/playlist/:id" element={<Suspense fallback={<PageFallback />}><PlaylistDetailPage /></Suspense>} />
             <Route path="/library" element={<Suspense fallback={<PageFallback />}><LibraryPage /></Suspense>} />

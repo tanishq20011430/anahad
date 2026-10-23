@@ -16,7 +16,8 @@ export function TrackRow({
   index,
   contextTracks,
   contextLabel,
-  showAlbum = true,
+  /* legacy prop (album links were removed with the Internet Archive source) */
+  showAlbum: _showAlbum,
   onRemove
 }: {
   track: Track
@@ -35,7 +36,7 @@ export function TrackRow({
   const [menuOpen, setMenuOpen] = useState(false)
   const [playlistModal, setPlaylistModal] = useState(false)
 
-  const playable = track.formats.length > 0
+  const playable = track.formats.length > 0 || Boolean(track.embed)
 
   function handlePlay() {
     if (isCurrent) {
@@ -84,7 +85,7 @@ export function TrackRow({
         <div className="flex items-center gap-2">
           {typeof index === 'number' ? <span className="hidden w-5 flex-shrink-0 text-right text-xs tabular-nums text-zinc-600 sm:inline">{index + 1}</span> : null}
           {playable ? (
-            <Link to={`/track/${encodeURIComponent(track.identifier)}/${encodeURIComponent(track.fileName)}`} className="truncate text-sm font-medium text-zinc-100 hover:underline">
+            <Link to={`/track/${track.source}/${encodeURIComponent(track.identifier)}`} className="truncate text-sm font-medium text-zinc-100 hover:underline">
               {track.title}
             </Link>
           ) : (
@@ -92,28 +93,20 @@ export function TrackRow({
               {track.title} (unavailable)
             </span>
           )}
+          {track.isLive ? (
+            <span className="flex-shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-400" title="Live stream — no seeking">
+              Live
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-          <Link to={`/artist/${encodeURIComponent(track.artist)}`} className="truncate hover:text-zinc-300 hover:underline">
-            {track.artist}
-          </Link>
-          {track.source !== 'internet-archive' ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-zinc-600">{sourceChipFor(track.source, track.collection)}</span>
-            </>
-          ) : showAlbum ? (
-            <>
-              <span aria-hidden>·</span>
-              <Link to={`/album/${encodeURIComponent(track.identifier)}`} className="truncate hover:text-zinc-300 hover:underline">
-                {track.album}
-              </Link>
-            </>
-          ) : null}
+          <span className="truncate">{track.artist}</span>
+          <span aria-hidden>·</span>
+          <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-zinc-600">{sourceChipFor(track.source, track.collection)}</span>
         </div>
       </div>
 
-      <span className="hidden flex-shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{formatDuration(track.durationSec)}</span>
+      <span className="hidden flex-shrink-0 text-xs tabular-nums text-zinc-500 sm:block">{track.isLive ? '—' : formatDuration(track.durationSec)}</span>
 
       <div className="flex flex-shrink-0 items-center gap-0.5">
         <button

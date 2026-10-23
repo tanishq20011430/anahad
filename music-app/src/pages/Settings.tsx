@@ -12,12 +12,12 @@ import { CACHE_BUDGET_LABEL, type CacheMode, type QualityPreference } from '../t
 import { WEIGHTS } from '../lib/recommend'
 
 const QUALITY_HELP: Record<QualityPreference, string> = {
-  auto: 'Balanced default — best compatible MP3 up to ~192 kbps.',
-  highest: 'Best available for the track (FLAC when the source truly has it).',
-  'data-saver': 'Lowest available bitrate to save data.',
-  standard: 'Targets ≤128 kbps files when present.',
-  high: 'Targets ≥192 kbps files when present.',
-  lossless: 'FLAC only when the archive item genuinely contains it.'
+  auto: 'Balanced default — best compatible MP3 up to ~192 kbps where the source lists bitrates.',
+  highest: 'Best available for the track (lossless only when a source truly provides it).',
+  'data-saver': 'Lowest available bitrate to save data. On YouTube this requests the smallest quality.',
+  standard: 'Targets ≤128 kbps files when a source lists them.',
+  high: 'Targets ≥192 kbps files when a source lists them.',
+  lossless: 'Lossless only where a source genuinely provides it — never assumed, never faked.'
 }
 
 export function SettingsPage() {
@@ -153,15 +153,11 @@ export function SettingsPage() {
             label={s.label}
             hint={`${s.summary} Verified ${s.verifiedAt}.${s.limits.length ? ` Limits: ${s.limits.join(' ')}` : ''}`}
           >
-            {s.id !== 'internet-archive' ? (
-              <Toggle
-                checked={sources[s.id as 'internet-archive' | 'openverse']}
-                onChange={(v) => useSettings.getState().setSourceEnabled(s.id as 'internet-archive' | 'openverse', v)}
-                label={`Use ${s.label}`}
-              />
-            ) : (
-              <span className="text-[11px] text-zinc-600">primary</span>
-            )}
+            <Toggle
+              checked={sources[s.id as keyof typeof sources]}
+              onChange={(v) => useSettings.getState().setSourceEnabled(s.id as keyof typeof sources, v)}
+              label={`Use ${s.label}`}
+            />
           </SettingRow>
         ))}
         <div className="rounded-lg bg-black/20 p-3">

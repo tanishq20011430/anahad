@@ -1,39 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { usePlayer } from '../src/stores/player'
-import type { Track } from '../src/types'
-
-function makeTrack(i: number, overrides: Partial<Track> = {}): Track {
-  return {
-    id: `internet-archive:item${i}:file${i}.mp3`,
-    source: 'internet-archive',
-    identifier: `item${i}`,
-    fileName: `file${i}.mp3`,
-    title: `Song ${i}`,
-    artist: `Artist ${i % 3}`,
-    album: `Album ${i}`,
-    artwork: null,
-    durationSec: 100 + i,
-    formats: [
-      {
-        url: `https://archive.org/download/item${i}/file${i}.mp3`,
-        fileName: `file${i}.mp3`,
-        label: '128Kbps MP3',
-        approxBitrateKbps: 128,
-        sizeBytes: 1000,
-        isLossless: false,
-        mimeType: 'audio/mpeg'
-      }
-    ],
-    licenseUrl: null,
-    language: null,
-    genres: [],
-    estimatedMoods: [],
-    year: null,
-    itemPage: `https://archive.org/details/item${i}`,
-    collection: null,
-    ...overrides
-  }
-}
+import { makeTrack, makeYtTrack } from './helpers'
 
 /** Stub audio controller so store transitions run without a real element. */
 function stubController() {
@@ -184,5 +151,26 @@ describe('player store — queue behavior', () => {
     expect(usePlayer.getState().muted).toBe(true)
     usePlayer.getState().toggleMute()
     expect(usePlayer.getState().muted).toBe(false)
+  })
+
+  it('circuit breaker stops auto-advance after 4 consecutive dead tracks', async () => {
+    stubController()
+    // YouTube-shaped tracks (no formats): every failure goes to the breaker path.
+    const tracks = [0, 1, 2, 3, 4].map((i) => makeYtTrack(i))
+    await usePlayer.getState().playTracks(tracks, 0, null)
+    const { useSettings } = await import('../src/stores/settings')
+    useSettings.setState({ autoplayNext: true })
+    await usePlayer.getState().onError()
+    expect(usePlayer.getState().currentIndex).toBe(1)
+    await usePlayer.getState().onError()
+    expect(usePlayer.getState().currentIndex).toBe(2)
+    await usePlayer.getState().onError()
+    expect(usePlayer.getState().currentIndex).toBe(3)
+    await usePlayer.getState().onError() // 4th consecutive failure → stop
+    expect(usePlayer.getState().currentIndex).toBe(3)
+    expect(usePlayer.getState().error).toMatch(/Several tracks in a row/i)
+    // a successful play resets the counter
+    usePlayer.getState().onPlaying()
+    expect(usePlayer.getState().consecutiveErrors).toBe(0)
   })
 })

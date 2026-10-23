@@ -39,10 +39,12 @@ export function QualityMenu({ compact = false }: { compact?: boolean }) {
   const hasLossless = Boolean(track?.formats.some((f) => f.isLossless))
   const singleFormat = Boolean(track && track.formats.length === 1)
   const currentLabel = player.currentFormat
-    ? `${player.currentFormat.label}${player.currentFormat.approxBitrateKbps ? ` · ≈${player.currentFormat.approxBitrateKbps} kbps` : ''}`
-    : track && (track.source === 'youtube' || track.source === 'spotify')
-      ? 'Provider-controlled'
-      : 'Source default'
+    ? `${player.currentFormat.label}${player.currentFormat.approxBitrateKbps ? ` · ${player.currentFormat.approxBitrateKbps} kbps` : ''}`
+    : track?.source === 'youtube'
+      ? 'Requested · YouTube decides'
+      : track?.source === 'mixcloud' || track?.source === 'spotify'
+        ? 'Provider-controlled'
+        : 'Source default'
 
   return (
     <div className="relative" ref={ref}>
@@ -83,11 +85,13 @@ export function QualityMenu({ compact = false }: { compact?: boolean }) {
             )
           })}
           <p className="px-3 py-2 text-[10px] leading-relaxed text-zinc-500">
-            {hasLossless
-              ? 'Lossless (FLAC) available for this track.'
-              : singleFormat
-                ? 'This source provides one format per track (labeled as the original) — bitrate stays honestly “source-provided” when upstream does not publish it.'
-                : 'Bitrates are computed from real file sizes — never invented. Options the source doesn’t provide are disabled.'}
+            {track?.source === 'youtube'
+              ? 'YouTube plays through its official player with adaptive streaming — the picker sends a quality REQUEST, but YouTube decides what is delivered. Nothing is extracted or bypassed.'
+              : hasLossless
+                ? 'Lossless available for this track.'
+                : singleFormat
+                  ? 'This source provides one format per track — bitrate stays honestly “source-provided” when upstream does not publish it.'
+                  : 'Only options the source truly provides are offered — bitrates are never invented.'}
           </p>
         </div>
       ) : null}

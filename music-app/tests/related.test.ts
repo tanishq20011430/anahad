@@ -4,8 +4,8 @@ import type { Track } from '../src/types'
 
 function makeTrack(i: number, overrides: Partial<Track> = {}): Track {
   return {
-    id: `internet-archive:item${i}:file${i}.mp3`,
-    source: 'internet-archive',
+    id: `openverse:item${i}`,
+    source: 'openverse',
     identifier: `item${i}`,
     fileName: `file${i}.mp3`,
     title: `Song ${i}`,
@@ -15,7 +15,7 @@ function makeTrack(i: number, overrides: Partial<Track> = {}): Track {
     durationSec: 180,
     formats: [
       {
-        url: `https://archive.org/download/item${i}/file${i}.mp3`,
+        url: `https://storage.example.com/download/item${i}/file${i}.mp3`,
         fileName: `file${i}.mp3`,
         label: 'VBR MP3',
         approxBitrateKbps: 200,
@@ -24,13 +24,14 @@ function makeTrack(i: number, overrides: Partial<Track> = {}): Track {
         mimeType: 'audio/mpeg'
       }
     ],
+    embed: null,
     licenseUrl: null,
     language: null,
     genres: ['lo-fi'],
     estimatedMoods: [],
     year: null,
-    itemPage: `https://archive.org/details/item${i}`,
-    collection: null,
+    itemPage: `https://openverse.org/item${i}`,
+    collection: 'jamendo',
     ...overrides
   }
 }
@@ -58,14 +59,35 @@ function stubRelatedFetch() {
           ]
         })
       }
-      if (u.includes('advancedsearch.php')) {
-        return Response.json({ response: { numFound: 1, docs: [{ identifier: 'itemX', title: 'Same Artist Album', creator: 'Artist 1', downloads: 3 }] } })
-      }
-      if (u.includes('/metadata/')) {
+      // Unified track searches (same-artist cross-source, local-engine
+      // fallback) hit the Openverse search endpoint — answer with a real track.
+      if (u.includes('api.openverse.org')) {
         return Response.json({
-          metadata: { title: 'Same Artist Album', creator: 'Artist 1' },
-          files: [{ name: 's1.mp3', format: 'VBR MP3', size: '2000000', length: '150.0', title: 'Sibling Track' }]
+          result_count: 1,
+          results: [
+            {
+              id: 'same-artist-1',
+              title: 'Same Artist Track',
+              creator: 'Artist 1',
+              url: 'https://prod-1.storage.jamendo.com/?trackid=8&format=mp32',
+              license: 'by',
+              license_version: '4.0',
+              duration: 150_000,
+              filetype: 'mp32',
+              provider: 'jamendo'
+            }
+          ]
         })
+      }
+      if (u.includes('piped')) {
+        return Response.json({
+          items: [
+            { url: '/watch?v=sameartist1', type: 'stream', title: 'Same Artist Song', uploaderName: 'Artist 1', duration: 190 }
+          ]
+        })
+      }
+      if (u.includes('api.audius.co') || u.includes('discoveryprovider.audius.co')) {
+        return Response.json({ data: [] })
       }
       return new Response('nf', { status: 404 })
     })
@@ -91,10 +113,10 @@ describe('related tracks + session mix', () => {
     const related = await fetchRelatedTracks(track)
     expect(related.length).toBeGreaterThan(0)
     expect(related.every((r) => r.track.id !== track.id)).toBe(true)
-    expect(related.every((r) => r.track.formats.length > 0)).toBe(true)
+    expect(related.every((r) => r.track.formats.length > 0 || r.track.embed)).toBe(true)
     expect(related.every((r) => r.reason.length > 0)).toBe(true)
-    // IA source gets same-artist expansion
-    expect(related.some((r) => r.reason.startsWith('More from'))).toBe(true)
+    // Same-artist cross-source search yields an honestly-labeled reason.
+    expect(related.some((r) => r.reason.includes('Artist 1') || r.track.id === 'youtube:sameartist1' || r.track.id === 'openverse:same-artist-1')).toBe(true)
   })
 
   it('degrades to an empty list (not a crash) when all network fails', async () => {
