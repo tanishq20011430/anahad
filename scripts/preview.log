@@ -1,0 +1,2 @@
+$ node scripts/serve-preview.cjs
+Anahad preview serving /home/z/my-project/music-app/dist on http://0.0.0.0:3000

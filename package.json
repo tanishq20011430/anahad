@@ -1,0 +1,10 @@
+{
+  "name": "anahad-preview-host",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Serves the built Anahad app (music-app/dist) for the sandbox preview on port 3000",
+  "scripts": {
+    "dev": "node scripts/serve-preview.cjs",
+    "start": "node scripts/serve-preview.cjs"
+  }
+}
