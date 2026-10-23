@@ -8,6 +8,7 @@ import { usePlayer, selectCurrentTrack } from '../stores/player'
 import { useLibrary } from '../stores/library'
 import { formatDuration } from '../lib/format'
 import { sourceChipFor } from '../lib/sourceStatus'
+import { isPlayable } from '../lib/resolve'
 import { toast } from './ui'
 import { AddToPlaylistModal } from './AddToPlaylistModal'
 
@@ -36,7 +37,7 @@ export function TrackRow({
   const [menuOpen, setMenuOpen] = useState(false)
   const [playlistModal, setPlaylistModal] = useState(false)
 
-  const playable = track.formats.length > 0 || Boolean(track.embed)
+  const playable = isPlayable(track)
 
   function handlePlay() {
     if (isCurrent) {
@@ -84,7 +85,10 @@ export function TrackRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           {typeof index === 'number' ? <span className="hidden w-5 flex-shrink-0 text-right text-xs tabular-nums text-zinc-600 sm:inline">{index + 1}</span> : null}
-          {playable ? (
+          {track.lookup ? (
+            // Chart entry: no detail page until it's matched to a video at play time.
+            <span className="truncate text-sm font-medium text-zinc-100">{track.title}</span>
+          ) : playable ? (
             <Link to={`/track/${track.source}/${encodeURIComponent(track.identifier)}`} className="truncate text-sm font-medium text-zinc-100 hover:underline">
               {track.title}
             </Link>

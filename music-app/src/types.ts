@@ -70,6 +70,11 @@ export interface Track {
   formats: AudioFormat[]
   /** Official embed reference when playback goes through the provider's player. */
   embed: TrackEmbed | null
+  /**
+   * Chart entry with no audio of its own: resolved at play time by searching
+   * YouTube for this query (see lib/resolve.ts). Never set on regular tracks.
+   */
+  lookup?: { query: string } | null
   licenseUrl: string | null
   /** Human license label when the source provides one verbatim (never invented). */
   licenseName?: string | null

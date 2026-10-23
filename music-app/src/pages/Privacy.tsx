@@ -27,8 +27,10 @@ export function PrivacyPage() {
             <strong className="text-zinc-200">Requests to music sources.</strong> Search and playback talk directly to the
             connected sources' public endpoints: the Piped community relays and YouTube's player (for YouTube), the
             official Audius API, the radio-browser.info directory, the Openverse API (Jamendo, Wikimedia Commons,
-            Freesound) and Mixcloud's public API. Like any web service, they see your requests and may log them under
-            their own privacy policies. Anahad adds nothing to those requests — no identifiers, no profiles.
+            Freesound) and Mixcloud's public API. Charts load Apple Music's public RSS feeds — on the web through this
+            site's pass-through proxy (Apple's feeds don't allow direct browser requests), in the Android app directly.
+            Like any web service, they see your requests and may log them under their own privacy policies. Anahad adds
+            nothing to those requests — no identifiers, no profiles.
           </li>
           <li>
             <strong className="text-zinc-200">Temporary audio cache is RAM-only.</strong> To reduce gaps between songs,
@@ -110,6 +112,19 @@ export function PrivacyPage() {
                 official Mixcloud widget
               </a>
               . Mixcloud doesn't expose direct audio URLs, so their player stays in control.
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold text-zinc-200">Charts — Apple Music public feeds, played via YouTube</p>
+            <p className="mt-1">
+              The Charts page and the Top 10 shelf use Apple Music's public{' '}
+              <a href="https://rss.marketingtools.apple.com" target="_blank" rel="noopener noreferrer" className="text-accent-soft hover:underline">
+                “most played” RSS feeds
+              </a>{' '}
+              (keyless, updated daily per country). Rankings, titles and artwork come from Apple; each song plays through
+              YouTube's official player, matched by title and artist when you press play — occasionally that can land on a
+              different upload of the same song. YouTube's own charts can't be read through the Piped relays, and no
+              keyless source publishes like counts, so there is no “most liked” chart.
             </p>
           </div>
           <div>

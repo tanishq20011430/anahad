@@ -14,7 +14,8 @@ import {
   PanelLeftOpen,
   Search,
   Settings,
-  Smile
+  Smile,
+  TrendingUp
 } from 'lucide-react'
 import { usePlayer, selectCurrentTrack } from '../stores/player'
 import { PlayerBar } from './PlayerBar'
@@ -24,6 +25,7 @@ import { ToastContainer } from './ui'
 const NAV = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/search', label: 'Search', icon: Search },
+  { to: '/charts', label: 'Charts', icon: TrendingUp },
   { to: '/genres', label: 'Genres', icon: Compass },
   { to: '/moods', label: 'Moods', icon: Smile },
   { to: '/playlists', label: 'Playlists', icon: ListMusic },
@@ -36,6 +38,7 @@ const NAV = [
 const MOBILE_NAV = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/search', label: 'Search', icon: Search },
+  { to: '/charts', label: 'Charts', icon: TrendingUp },
   { to: '/genres', label: 'Genres', icon: Compass },
   { to: '/library', label: 'Library', icon: Library }
 ]

@@ -3,6 +3,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Sparkles, Clock3, Radio } from 'lucide-react'
+import { CHART_COUNTRIES, fetchTopSongs, getChartCountry, newReleases } from '../lib/charts'
+import { ChartList } from '../components/ChartList'
 import { shelfSearchOptions, fetchRecommendations } from '../lib/discover'
 import { fetchSessionMix, getSessionPlays } from '../lib/related'
 import { unifiedTrackSearch } from '../lib/searchService'
@@ -57,6 +59,8 @@ export function HomePage() {
           </div>
         </Section>
       ) : null}
+
+      <ChartShelves />
 
       <Section
         title="Made for you"
@@ -227,5 +231,40 @@ function SessionMix() {
         ))}
       </div>
     </Section>
+  )
+}
+
+/** Top 10 + new releases from the daily charts (country remembered from the Charts page). */
+function ChartShelves() {
+  const country = getChartCountry()
+  const label = CHART_COUNTRIES.find((c) => c.code === country)?.label ?? country
+  const q = useQuery({
+    queryKey: ['chart-top-songs', country],
+    queryFn: ({ signal }) => fetchTopSongs(country, signal),
+    staleTime: 30 * 60 * 1000,
+    retry: 1
+  })
+  // Hide quietly when charts can't load (e.g. a static host without the proxy).
+  if (q.isError) return null
+  const fresh = q.data ? newReleases(q.data, 7).slice(0, 5) : []
+  return (
+    <>
+      <Section title={`Top 10 in ${label}`} subtitle="Most played right now · updated daily" seeAllTo="/charts">
+        {q.isPending ? (
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : (
+          <ChartList entries={q.data.entries.slice(0, 10)} contextLabel={`Top 10 · ${label}`} />
+        )}
+      </Section>
+      {fresh.length > 0 ? (
+        <Section title="New this week" subtitle={`Fresh releases already charting in ${label}`} seeAllTo="/charts?view=new">
+          <ChartList entries={fresh} contextLabel={`New this week · ${label}`} showRelease />
+        </Section>
+      ) : null}
+    </>
   )
 }

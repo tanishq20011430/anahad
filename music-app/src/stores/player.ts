@@ -12,7 +12,7 @@
 import { create } from 'zustand'
 import type { AudioFormat, ExternalEmbed, RepeatMode, Track } from '../types'
 import { pickFormat, ytQualityFor } from '../lib/quality'
-import { resolveTrackFormats } from '../lib/resolve'
+import { isPlayable, resolveTrackFormats } from '../lib/resolve'
 import { audioCache } from '../lib/audioCache'
 import { preload } from '../lib/preload'
 import { ytTransport } from '../lib/ytPlayer'
@@ -179,7 +179,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
 
     if (resolved.formats.length === 0) {
-      set({ error: 'This track has no playable audio at its source.', isLoading: false, isPlaying: false })
+      const error = track.lookup
+        ? "Couldn't find this chart song on YouTube right now."
+        : 'This track has no playable audio at its source.'
+      set({ error, isLoading: false, isPlaying: false })
       return
     }
 
@@ -289,7 +292,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     registerController: (c) => set({ controller: c }),
 
     playTracks: async (tracks, startIndex = 0, contextLabel = null) => {
-      const playable = tracks.filter((t) => t.formats.length > 0 || t.embed)
+      const playable = tracks.filter(isPlayable)
       if (playable.length === 0) return
       const idx = clamp(startIndex, 0, playable.length - 1)
       set((s) => ({
